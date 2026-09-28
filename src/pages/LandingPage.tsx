@@ -16,7 +16,8 @@ export default function LandingPage({ data, authenticated, notify }: Props) {
   const [busy, setBusy] = useState(false);
   const [mobileMenu, setMobileMenu] = useState(false);
   const navigate = useNavigate();
-  const plan = data.plans.find(p => p.id === selected) ?? data.plans[0];
+  const plans = data?.plans ?? [];
+  const plan = plans.find(p => p.id === selected) ?? plans[0];
   const demo = async () => { setBusy(true); try { const value = await post<BootstrapData>('/auth/demo'); authenticated(value); navigate('/app'); } catch (error) { notify((error as Error).message, 'error'); } finally { setBusy(false); } };
 
   return (
@@ -83,7 +84,7 @@ export default function LandingPage({ data, authenticated, notify }: Props) {
             <div className="landing-machine-floor" aria-hidden="true" />
             <div className="landing-machine-details">
               <div>
-                <small>EM EXIBIÇÃO / {String(data.plans.findIndex(p => p.id === selected) + 1).padStart(2, '0')}</small>
+                <small>EM EXIBIÇÃO / {String(plans.findIndex(p => p.id === selected) + 1).padStart(2, '0')}</small>
                 <h2>{plan?.machine}</h2>
                 <span>{plan?.coin} <b>·</b> {plan?.algorithm}</span>
               </div>
@@ -93,7 +94,7 @@ export default function LandingPage({ data, authenticated, notify }: Props) {
               </span>
             </div>
             <div className="landing-machine-selectors">
-              {data.plans.map(p => (
+              {plans.map(p => (
                 <button
                   key={p.id}
                   aria-label={'Exibir ' + p.machine}
@@ -157,7 +158,7 @@ export default function LandingPage({ data, authenticated, notify }: Props) {
             <p>Modelos definidos no catálogo AMNG. Explore preços, duração e as regras de cada plano.</p>
           </div>
           <motion.div className="landing-plan-grid" variants={staggerContainer(0.06)}>
-            {data.plans.map((p, i) => (
+            {plans.map((p, i) => (
               <motion.article key={p.id} variants={scaleIn} whileHover={{ y: -4, transition: { duration: 0.2 } }}>
                 <header>
                   <span className="mono">0{i + 1} / {p.coin}</span>

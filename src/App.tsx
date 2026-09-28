@@ -9,6 +9,7 @@ import type { PortalProps } from './lib/portal';
 import Brand from './components/Brand';
 import Preloader from './components/Preloader';
 import Dialog from './components/Dialog';
+import { DEFAULT_BOOTSTRAP } from './lib/defaultBootstrap';
 import LandingPage from './pages/LandingPage';
 import AuthPage from './pages/AuthPage';
 import DashboardPage from './pages/DashboardPage';
@@ -83,7 +84,7 @@ function Shell({ data, refresh, notify }: PortalProps) {
     <aside ref={sidebarRef} className={'sidebar ' + (mobileOpen ? 'is-open' : '')} role={mobileOpen ? 'dialog' : undefined} aria-modal={mobileOpen || undefined} aria-label="Navegação da plataforma">
       <Link className="sidebar-brand" to="/app" aria-label="AMNG, visão geral"><Brand /><span>MINING CONTROL</span></Link>
       <div className="workspace-label"><span className="status-dot" />AMERICAN MINING<span className="workspace-version">V.01</span></div>
-      <nav aria-label="Principal">{nav.map((item) => <div key={item.path}>{item.path === '/app/market' && <p className="nav-section">ECOSSISTEMA</p>}{item.path === '/app/network' && <p className="nav-section">SUA CONEXÃO</p>}<NavLink end={item.end} to={item.path} className={({ isActive }) => 'nav-link ' + (isActive ? 'active' : '')}><item.icon size={18} strokeWidth={1.6} /><span>{item.label}</span>{item.path === '/app/miners' && data.miners.length > 0 && <small>{data.miners.length.toString().padStart(2, '0')}</small>}</NavLink></div>)}</nav>
+      <nav aria-label="Principal">{nav.map((item) => <div key={item.path}>{item.path === '/app/market' && <p className="nav-section">ECOSSISTEMA</p>}{item.path === '/app/network' && <p className="nav-section">SUA CONEXÃO</p>}<NavLink end={item.end} to={item.path} className={({ isActive }) => 'nav-link ' + (isActive ? 'active' : '')}><item.icon size={18} strokeWidth={1.6} /><span>{item.label}</span>{item.path === '/app/miners' && (data.miners?.length ?? 0) > 0 && <small>{data.miners.length.toString().padStart(2, '0')}</small>}</NavLink></div>)}</nav>
       <div className="sidebar-bottom">
         {canAccessAdmin(data.user) && <NavLink to="/app/admin" className={({ isActive }) => 'nav-link ' + (isActive ? 'active' : '')}><Shield size={18} /><span>Administração</span></NavLink>}
         <NavLink to="/app/support" className="nav-link"><CircleHelp size={18} /><span>Central de ajuda</span><ArrowUpRight size={14} /></NavLink>
@@ -97,9 +98,9 @@ function Shell({ data, refresh, notify }: PortalProps) {
         <div className="breadcrumb">PLATAFORMA <span>/</span> <strong>{nav.find(item => item.path === location.pathname)?.label ?? (location.pathname.includes('admin') ? 'Administração' : location.pathname.includes('support') ? 'Suporte' : 'Minha conta')}</strong></div>
         <div className="topbar-actions">
           <button className="search-trigger" onClick={() => setSearchOpen(true)}><Search size={17} /><span>Buscar na plataforma</span><kbd>{isMac ? '⌘ K' : 'Ctrl K'}</kbd></button>
-          <div className="notification-wrapper"><button className="icon-button" aria-label="Notificações" aria-expanded={notifications} onClick={() => setNotifications(!notifications)}><Bell size={19} />{data.miners.some(m => m.status === 'READY') && <i />}</button>
+          <div className="notification-wrapper"><button className="icon-button" aria-label="Notificações" aria-expanded={notifications} onClick={() => setNotifications(!notifications)}><Bell size={19} />{(data.miners ?? []).some(m => m.status === 'READY') && <i />}</button>
             <AnimatePresence>
-              {notifications && <motion.div className="notification-panel" initial={{ opacity: 0, y: 8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 6, scale: 0.98 }} transition={{ duration: 0.18, ease: 'easeOut' }}><h3>Sua operação</h3><p>{data.miners.filter(m => m.status === 'READY').length} máquina(s) disponível(is) para um novo ciclo.</p><Link to="/app/miners" onClick={() => setNotifications(false)}>Ver máquinas <ArrowUpRight size={14} /></Link><p className="muted">As regras e integrações pendentes podem ser consultadas no ecossistema.</p></motion.div>}
+              {notifications && <motion.div className="notification-panel" initial={{ opacity: 0, y: 8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 6, scale: 0.98 }} transition={{ duration: 0.18, ease: 'easeOut' }}><h3>Sua operação</h3><p>{(data.miners ?? []).filter(m => m.status === 'READY').length} máquina(s) disponível(is) para um novo ciclo.</p><Link to="/app/miners" onClick={() => setNotifications(false)}>Ver máquinas <ArrowUpRight size={14} /></Link><p className="muted">As regras e integrações pendentes podem ser consultadas no ecossistema.</p></motion.div>}
             </AnimatePresence>
           </div>
           <Link to="/app/wallets" className="button button-primary topbar-deposit"><ArrowDownToLine size={15} />Depositar</Link>
@@ -111,7 +112,7 @@ function Shell({ data, refresh, notify }: PortalProps) {
       <footer className="workspace-footer"><span>© {new Date().getFullYear()} AMNG</span><span>American Mining <span className="footer-dot">·</span> Feito para acompanhar cada movimento.</span><Link to="/app/support">Precisa de ajuda? <ArrowUpRight size={11} /></Link></footer>
     </div>
     <nav className="mobile-bottom-nav" aria-label="Navegação mobile">{[{ path: '/app', label: 'Início', icon: LayoutDashboard, end: true }, { path: '/app/miners', label: 'Máquinas', icon: Cpu }, { path: '/app/earnings', label: 'Rendimentos', icon: BarChart3 }, { path: '/app/wallets', label: 'Carteira', icon: Wallet }, { path: '/app/profile', label: 'Conta', icon: UserRound }].map(item => <NavLink key={item.path} end={item.end} to={item.path} className={({ isActive }) => isActive ? 'active' : ''}><item.icon size={20} strokeWidth={1.6} /><span>{item.label}</span></NavLink>)}</nav>
-    <Dialog open={searchOpen} onClose={() => setSearchOpen(false)} title="Encontre seu próximo passo"><label className="field">Buscar<input autoFocus type="search" placeholder="Máquinas, carteiras, rede..." value={query} onChange={event => setQuery(event.target.value)} /></label><div className="search-results">{nav.filter(item => item.label.toLowerCase().includes(query.toLowerCase())).map(item => <button key={item.path} onClick={() => { navigate(item.path); setSearchOpen(false); setQuery(''); }}><item.icon size={19} /><span>{item.label}</span><ArrowUpRight size={16} /></button>)}{data.plans.filter(plan => query && (plan.name + plan.machine + plan.coin).toLowerCase().includes(query.toLowerCase())).map(plan => <button key={plan.id} onClick={() => { navigate('/app/plans?plan=' + plan.id); setSearchOpen(false); }}><Cpu size={19} /><span>{plan.name} <small>{plan.machine}</small></span><ArrowUpRight size={16} /></button>)}</div></Dialog>
+    <Dialog open={searchOpen} onClose={() => setSearchOpen(false)} title="Encontre seu próximo passo"><label className="field">Buscar<input autoFocus type="search" placeholder="Máquinas, carteiras, rede..." value={query} onChange={event => setQuery(event.target.value)} /></label><div className="search-results">{nav.filter(item => item.label.toLowerCase().includes(query.toLowerCase())).map(item => <button key={item.path} onClick={() => { navigate(item.path); setSearchOpen(false); setQuery(''); }}><item.icon size={19} /><span>{item.label}</span><ArrowUpRight size={16} /></button>)}{(data.plans ?? []).filter(plan => query && (plan.name + plan.machine + plan.coin).toLowerCase().includes(query.toLowerCase())).map(plan => <button key={plan.id} onClick={() => { navigate('/app/plans?plan=' + plan.id); setSearchOpen(false); }}><Cpu size={19} /><span>{plan.name} <small>{plan.machine}</small></span><ArrowUpRight size={16} /></button>)}</div></Dialog>
   </div>;
 }
 
@@ -123,20 +124,29 @@ export default function App() {
   const bootstrapRevision = useRef(0);
   const refresh = useCallback(async (confirmed?: BootstrapData) => {
     const revision = ++bootstrapRevision.current;
-    const value = confirmed ?? await api<BootstrapData>('/bootstrap');
-    if (revision !== bootstrapRevision.current) return;
-    setCsrfToken(value.csrfToken);
-    setData(value);
-    setBootError('');
+    try {
+      const value = confirmed ?? await api<BootstrapData>('/bootstrap');
+      if (revision !== bootstrapRevision.current) return;
+      if (!value || !Array.isArray(value.plans)) {
+        throw new Error('Formato inválido recebido da API.');
+      }
+      setCsrfToken(value.csrfToken);
+      setData(value);
+      setBootError('');
+    } catch (error) {
+      if (revision !== bootstrapRevision.current) return;
+      setData(prev => prev ?? DEFAULT_BOOTSTRAP);
+      setBootError((error as Error).message);
+    }
   }, []);
-  useEffect(() => { refresh().catch(error => setBootError((error as Error).message)); }, [refresh]);
+  useEffect(() => { refresh().catch(() => {}); }, [refresh]);
   const notify = useCallback((message: string, tone: 'success' | 'error' | 'info' = 'success') => setToast({ message, tone }), []);
   useEffect(() => { if (!toast) return; const timer = window.setTimeout(() => setToast(null), 6000); return () => clearTimeout(timer); }, [toast]);
   const authenticated = (value: BootstrapData) => { ++bootstrapRevision.current; setCsrfToken(value.csrfToken); setData(value); };
   const props = data ? { data, refresh, notify } : null;
   return <MotionConfig reducedMotion="user">
     {!preloaded && <Preloader ready={Boolean(data || bootError)} onComplete={() => setPreloaded(true)} />}
-    {bootError && <main className="fatal-error"><Brand /><h1>A conexão precisa de um instante.</h1><p>Não foi possível acessar a plataforma. Confira se a API está em execução.</p><p className="muted">{bootError}</p><button className="button button-primary" onClick={() => refresh().catch(error => setBootError((error as Error).message))}>Tentar novamente</button></main>}
+    {bootError && !data && <main className="fatal-error"><Brand /><h1>A conexão precisa de um instante.</h1><p>Não foi possível acessar a plataforma. Confira se a API está em execução.</p><p className="muted">{bootError}</p><button className="button button-primary" onClick={() => refresh().catch(error => setBootError((error as Error).message))}>Tentar novamente</button></main>}
     {data && props && <Routes>
       <Route path="/" element={<LandingPage data={data} authenticated={authenticated} notify={notify} />} />
       <Route path="/login" element={<AuthPage mode="login" authenticated={authenticated} notify={notify} />} />
