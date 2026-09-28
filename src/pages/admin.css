@@ -1,0 +1,16 @@
+.admin-career-close { display: grid; grid-template-columns: 1fr 210px auto; align-items: end; gap: 24px; margin-top: 22px; }
+.admin-career-close .eyebrow { margin-bottom: 8px; }
+.admin-career-close .field { margin-bottom: 0; }
+.admin-career-close .form-hint { max-width: 660px; }
+@media (max-width: 1000px) { .admin-career-close { grid-template-columns: 1fr 210px; } .admin-career-close > div { grid-column: 1 / -1; } }
+@media (max-width: 600px) { .admin-career-close { display: flex; align-items: stretch; flex-direction: column; gap: 16px; } }
+
+.admin-career-panel { padding: 24px; margin-top: 22px; }
+.admin-career-panel .admin-career-close { margin-top: 0; }
+.admin-career-budget, .admin-career-estimate { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 16px; padding-top: 22px; margin-top: 22px; border-top: 1px solid var(--line); }
+.admin-career-budget > div { display: flex; flex-direction: column; gap: 8px; }
+.admin-career-budget span, .admin-career-estimate span { color: var(--muted); font-size: 11px; }
+.admin-career-budget strong { font-size: 24px; font-weight: 500; }
+.admin-career-budget small { font-size: 9px; color: var(--muted); }
+.admin-career-estimate strong { display: block; margin-top: 7px; font-size: 16px; color: var(--text); }
+@media(max-width:600px) { .admin-career-panel { padding:20px; } .admin-career-budget { grid-template-columns:1fr; gap:20px; } .admin-career-estimate { grid-template-columns:1fr; gap:16px; } }

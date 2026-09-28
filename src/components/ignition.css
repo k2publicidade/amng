@@ -1,0 +1,20 @@
+.ignition-status { position: absolute; z-index: 4; inset: auto 7% -2px; padding: 12px 15px 11px; border: 1px solid #244c69; border-radius: 10px; background: linear-gradient(120deg, #0b2233ee, #07111bf5); backdrop-filter: blur(12px); color: #bddfff; box-shadow: 0 8px 30px #0008; pointer-events: none; animation: ignition-panel-in 250ms ease both; }
+.ignition-status-heading { display: flex; align-items: center; gap: 8px; font-size: 10px; font-weight: 500; }
+.ignition-status-heading > svg { color: var(--miner-accent, #69baff); }
+.ignition-status-heading b { margin-left: auto; color: var(--miner-accent, #69baff); font-family: var(--mono); font-size: 8px; letter-spacing: 1px; }
+.ignition-status-steps { display: flex; align-items: center; gap: 8px; margin-top: 10px; color: #314d61; }
+.ignition-status-steps > span { flex: 1; display: flex; align-items: center; gap: 8px; transition: color 250ms ease; }
+.ignition-status-steps > span.complete { color: var(--miner-accent, #69baff); }
+.ignition-status-steps i { height: 1px; background: currentColor; opacity: .5; flex: 1; }
+.ignition-status-progress { height: 2px; background: #18334b; overflow: hidden; margin-top: 10px; border-radius: 2px; }
+.ignition-status-progress > span { display: block; height: 100%; background: var(--miner-accent, #69baff); transform-origin: left; animation: ignition-progress 3.6s cubic-bezier(.32,.1,.22,1) both; box-shadow: 0 0 10px var(--miner-accent, #69baff); }
+.operation-stage.is-starting .machine-stage-label { opacity: 0; }
+.power-button.active:disabled { opacity: 1; }
+.power-button.is-starting { animation: ignition-power 3.6s ease both; }
+@keyframes ignition-progress { 0% { transform: scaleX(.04); } 28% { transform: scaleX(.31); } 62% { transform: scaleX(.8); } 100% { transform: scaleX(1); } }
+@keyframes ignition-power { 0%, 16% { box-shadow: 0 0 0 5px #040e16, 0 0 0 6px #173452, 0 0 6px color-mix(in srgb, var(--miner-accent, #1386ff) 7%, transparent); } 58% { box-shadow: 0 0 0 5px #040e16, 0 0 0 6px #225684, 0 0 36px color-mix(in srgb, var(--miner-accent, #1386ff) 34%, transparent); } 100% { box-shadow: 0 0 0 5px #040e16, 0 0 0 6px #173452, 0 0 18px color-mix(in srgb, var(--miner-accent, #1386ff) 20%, transparent); } }
+@keyframes ignition-panel-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 760px) { .ignition-status { inset-inline: 8%; padding: 10px 13px 9px; } .ignition-status-heading { font-size: 9px; } }
+@media (prefers-reduced-motion: reduce) { .ignition-status, .ignition-status-progress > span, .power-button.is-starting { animation: none; } .ignition-status-steps > span { transition: none; } }
+
+.operation-panel .halo-progress { stroke: var(--miner-accent, var(--blue)); filter: drop-shadow(0 0 3px var(--miner-accent, var(--blue))); }

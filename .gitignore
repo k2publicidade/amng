@@ -1,0 +1,10 @@
+node_modules/
+dist/
+build/
+data/
+.env
+.env.local
+*.log
+test-results/
+playwright-report/
+.amng-runtime/

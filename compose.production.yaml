@@ -1,0 +1,55 @@
+services:
+  postgres:
+    image: postgres:17-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: amng
+      POSTGRES_DB: amng
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina a senha exclusiva do banco no arquivo de ambiente}
+      POSTGRES_INITDB_ARGS: --data-checksums
+    volumes:
+      - amng-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U amng -d amng]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [database]
+
+  app:
+    build: .
+    init: true
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3001
+      DEMO_ENABLED: 'false'
+      APP_ORIGIN: ${APP_ORIGIN:?Defina o domínio HTTPS da plataforma}
+      DATABASE_URL: ${DATABASE_URL:?Defina a URL PostgreSQL com host postgres e senha codificada}
+      SESSION_SECRET: ${SESSION_SECRET:?Defina um segredo de sessão exclusivo}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      BINANCE_ENABLED: ${BINANCE_ENABLED:-true}
+      TWO_PP_API_URL: ${TWO_PP_API_URL:-}
+      TWO_PP_API_KEY: ${TWO_PP_API_KEY:-}
+      TWO_PP_WEBHOOK_SECRET: ${TWO_PP_WEBHOOK_SECRET:-}
+    ports:
+      - '127.0.0.1:3001:3001'
+    networks: [database, application]
+
+volumes:
+  amng-postgres:
+
+networks:
+  database:
+    internal: true
+  application:

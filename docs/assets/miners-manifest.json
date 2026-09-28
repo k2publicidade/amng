@@ -1,0 +1,170 @@
+[
+  {
+    "file": "alph-on.png",
+    "width": 1254,
+    "height": 1254,
+    "cornerAlpha": [
+      0,
+      0,
+      1,
+      0
+    ],
+    "sha256": "8887adcabd599f34e0119dbe7223ea58077110f5a04c734fb9dbdf16d7fccc09"
+  },
+  {
+    "file": "alph.png",
+    "width": 1500,
+    "height": 1500,
+    "cornerAlpha": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "sha256": "dfcc230b61f0aebcfc5d5b4a273291ac2383a553d07f9510a00cd81463a392c0"
+  },
+  {
+    "file": "btc-on.png",
+    "width": 1181,
+    "height": 1332,
+    "cornerAlpha": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "sha256": "305c6af42fb83903fa6d7b279a1d74800535ac90d8d1bf9c7e52c89237e6166f"
+  },
+  {
+    "file": "btc.png",
+    "width": 1181,
+    "height": 1332,
+    "cornerAlpha": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "sha256": "9a72e2441b7083c8ba18680aebe177a70ef4e7177975afbaffe7f1b1aba4c786"
+  },
+  {
+    "file": "ckb-on.png",
+    "width": 1254,
+    "height": 1254,
+    "cornerAlpha": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "sha256": "ded70ebda218d4387305efb13ad81ad6619190044f8ae9471fedeab3e79aca39"
+  },
+  {
+    "file": "ckb.png",
+    "width": 1500,
+    "height": 1500,
+    "cornerAlpha": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "sha256": "12a279efe7d2c969075001b4c8231d3c05b87ea82b55b15873c2f98ab672be4c"
+  },
+  {
+    "file": "doge-on.png",
+    "width": 1254,
+    "height": 1254,
+    "cornerAlpha": [
+      0,
+      0,
+      1,
+      0
+    ],
+    "sha256": "bae9d6934c8881e7666284e00cf16ff807d99551a669ad2fcf9d72026cfb8704"
+  },
+  {
+    "file": "doge.png",
+    "width": 1500,
+    "height": 1500,
+    "cornerAlpha": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "sha256": "7b7232211cc2ad62b07a4bddb6ea4f655fc7f70a0143e03de7c65676c7bc5f60"
+  },
+  {
+    "file": "etc-on.png",
+    "width": 1254,
+    "height": 1254,
+    "cornerAlpha": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "sha256": "779935fd36742b5de8d1aeffee4afa1b042105ac69a68fdd6c737d80d78ef6c9"
+  },
+  {
+    "file": "etc.png",
+    "width": 1200,
+    "height": 1200,
+    "cornerAlpha": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "sha256": "0912dc5a7d17e1ed4f2fdbf80ff24e869939f009d62b6736e27f82e947c7f7ea"
+  },
+  {
+    "file": "kda-on.png",
+    "width": 1254,
+    "height": 1254,
+    "cornerAlpha": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "sha256": "d187a541d2572d84465c18b46f0b5ff197b764a1ba77b3a5b789ee850af2afbd"
+  },
+  {
+    "file": "kda.png",
+    "width": 1500,
+    "height": 1500,
+    "cornerAlpha": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "sha256": "9b1147180232efc19400515d3771f6394c0914bc8dad2d793d54451bc45a45c3"
+  },
+  {
+    "file": "sc-on.png",
+    "width": 1254,
+    "height": 1254,
+    "cornerAlpha": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "sha256": "c6a2b669791f80de08fae08e4c06bb1198d8f223ee39f24b24bf9ed2541a5372"
+  },
+  {
+    "file": "sc.png",
+    "width": 1500,
+    "height": 1500,
+    "cornerAlpha": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "sha256": "e5d5a37c0f7b6f64e2b870d723e9ed2f626ad70df8603db2b730122be0926325"
+  }
+]
