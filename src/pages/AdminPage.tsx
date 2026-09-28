@@ -83,10 +83,10 @@ export default function AdminPage({ data, refresh, notify }: PortalProps) {
         <>
           <motion.div className="admin-totals" variants={staggerContainer(0.06)}>
             {[
-              { label: 'Participantes', value: number(admin.totals.users), icon: Users },
-              { label: 'Contratos', value: number(admin.totals.contracts), icon: Cpu },
-              { label: 'Depósitos confirmados', value: money(admin.totals.depositsCents), icon: Wallet },
-              { label: 'Pagamentos pendentes', value: number(admin.totals.pendingPayments), icon: Layers },
+              { label: 'Participantes', value: admin.totals.users != null ? number(admin.totals.users) : '—', icon: Users },
+              { label: 'Contratos', value: admin.totals.contracts != null ? number(admin.totals.contracts) : '—', icon: Cpu },
+              { label: 'Depósitos confirmados', value: admin.totals.depositsCents != null ? money(admin.totals.depositsCents) : '—', icon: Wallet },
+              { label: 'Pagamentos pendentes', value: admin.totals.pendingPayments != null ? number(admin.totals.pendingPayments) : '—', icon: Layers },
             ].map(k => (
               <motion.div className="panel" key={k.label} variants={scaleIn}>
                 <span><k.icon size={14} /> {k.label}</span>

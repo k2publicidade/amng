@@ -23,7 +23,7 @@ import { closeDemoCareer } from './career.ts';
 import { careerPreview } from './career-preview.ts';
 import { registerCareerEvidenceRoutes } from './career-evidence-routes.ts';
 import { registerLedgerRoutes } from './ledger-routes.ts';
-import { USER_ROLES, type AdminPermission } from '../shared/permissions.ts';
+import { ADMIN_PERMISSIONS, USER_ROLES, type AdminPermission } from '../shared/permissions.ts';
 import { effectiveRole, freshAdministrativeActor, requireAdminAccess, requirePermission } from './authorization.ts';
 
 const COOKIE='amng_session';
@@ -138,7 +138,10 @@ export async function createApplication(config:Config,options:AppOptions={}):Pro
     data.integrations=data.integrations.map(integration=>integration.id==='payments'?{...integration,name:'2PP',description:provider.state==='CONTRACT_PENDING'?'Credenciais presentes. Contrato de API, assinatura e homologação ainda pendentes.':'Provedor 2PP selecionado. Configuração de credenciais e contrato de API reservados para a etapa final.'}:integration.id==='quotes'?{...integration,name:'Binance · Spot USDT',status:quoteData.quoteStatus==='CONNECTED'?'CONNECTED':quoteData.quoteStatus==='CONNECTING'?'NOT_CONFIGURED':'ERROR',description:'Cotações públicas em USDT; pares inexistentes ou dados vencidos ficam indisponíveis.',updatedAt:quoteData.quoteUpdatedAt}:integration);
     res.setHeader('Cache-Control','no-store');res.json(data);
   }
-  async function sensitive(tx:Executor,req:Request,permission:AdminPermission,totp?:string){
+  async function sensitive(tx:Executor,req:Request,permissionOrTotp?:AdminPermission|string,totp?:string){
+    const isPerm = typeof permissionOrTotp === 'string' && (ADMIN_PERMISSIONS as readonly string[]).includes(permissionOrTotp);
+    const permission: AdminPermission = isPerm ? (permissionOrTotp as AdminPermission) : 'admin.access';
+    if(permissionOrTotp && !isPerm){totp=permissionOrTotp;}
     const actor=administrativeUser(req,permission);
     const fresh=await freshAdministrativeActor(tx,actor,permission,true);
     if(Number(fresh.is_demo)===1)return fresh;
