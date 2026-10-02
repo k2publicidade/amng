@@ -19,7 +19,7 @@ export class BinanceQuotes extends EventEmitter {
   private retries=0;
   private lastRefreshAt=0;
   private refreshPromise:Promise<void>|null=null;
-  constructor(private enabled=true,private apiOrigin='https://api.binance.com',private streamOrigin='wss://stream.binance.com:9443') {super();}
+  constructor(private enabled=true,private apiOrigin='https://data-api.binance.vision',private streamOrigin='wss://stream.binance.com:9443') {super();}
   start(){if(this.enabled&&!this.stopped){this.state='CONNECTING';void this.connect();}}
   snapshot(now=Date.now()):QuoteSnapshot {
     let freshest=0;
