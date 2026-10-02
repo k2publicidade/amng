@@ -18,7 +18,7 @@ export default function LandingPage({ data, authenticated, notify }: Props) {
   const navigate = useNavigate();
   const plans = data?.plans ?? [];
   const plan = plans.find(p => p.id === selected) ?? plans[0];
-  const demo = async () => { setBusy(true); try { const value = await post<BootstrapData>('/auth/demo'); authenticated(value); navigate('/app'); } catch (error) { notify((error as Error).message, 'error'); } finally { setBusy(false); } };
+  const demo = async () => { if (!data.demoEnabled) { navigate(data.user ? '/app' : '/register'); return; } setBusy(true); try { const value = await post<BootstrapData>('/auth/demo'); authenticated(value); navigate('/app'); } catch (error) { notify((error as Error).message, 'error'); } finally { setBusy(false); } };
 
   return (
     <div className="landing-page">
@@ -58,12 +58,12 @@ export default function LandingPage({ data, authenticated, notify }: Props) {
             </motion.p>
             <motion.div className="hero-cta" variants={fadeUp}>
               <button className="button button-primary" disabled={busy} onClick={demo}>
-                {busy ? 'Preparando demonstração...' : 'Explorar a plataforma'}<ArrowUpRight size={18} />
+                {busy ? 'Preparando demonstração...' : data.demoEnabled ? 'Explorar a plataforma' : 'Criar minha conta'}<ArrowUpRight size={18} />
               </button>
               <a href="#cloud-plans" className="hero-text-link">Conheça as máquinas <ArrowRight size={17} /></a>
             </motion.div>
             <motion.p className="demo-caption" variants={fadeUp}>
-              Uma experiência interativa. Dados demonstrativos, sem depósito.
+              {data.demoEnabled ? 'Uma experiência interativa. Dados demonstrativos, sem depósito.' : 'Acompanhe sua conta, equipamentos e atendimento em uma só central.'}
             </motion.p>
             <motion.div className="hero-proof" variants={fadeUp}>
               <span><Cpu size={18} /><b>7</b> modelos Cloud</span>
@@ -169,7 +169,7 @@ export default function LandingPage({ data, authenticated, notify }: Props) {
                 <p>{p.algorithm} <span>·</span> {p.durationDays} dias</p>
                 <div>
                   <strong>{money(p.priceCents)}</strong>
-                  <button aria-label={'Ver ' + p.machine + ' na demonstração'} onClick={demo} disabled={busy}>
+                  <button aria-label={'Conhecer ' + p.machine} onClick={demo} disabled={busy}>
                     <ArrowUpRight size={22} />
                   </button>
                 </div>
@@ -201,7 +201,7 @@ export default function LandingPage({ data, authenticated, notify }: Props) {
           <motion.div className="landing-final-cta" variants={scaleIn}>
             <div>
               <h3>SUA PRÓXIMA OPERAÇÃO<br />COMEÇA AQUI.</h3>
-              <p>Entre na demonstração e conheça a experiência.</p>
+              <p>{data.demoEnabled ? 'Entre na demonstração e conheça a experiência.' : 'Crie sua conta para acessar sua central.'}</p>
             </div>
             <button className="button button-primary" onClick={demo} disabled={busy}>
               Abrir plataforma <ArrowUpRight size={21} />

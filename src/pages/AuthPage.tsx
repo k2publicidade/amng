@@ -7,9 +7,9 @@ import { post, setCsrfToken } from '../lib/api';
 import { dynamicEase, fadeUp } from '../lib/animations';
 import Brand from '../components/Brand';
 import MinerVisual from '../components/MinerVisual';
-interface Props { mode: 'login' | 'register' | 'recover'; authenticated: (data: BootstrapData) => void; notify: (message: string, tone?: 'success' | 'error' | 'info') => void }
+interface Props { demoEnabled?: boolean; admin?: boolean; mode: 'login' | 'register' | 'recover'; authenticated: (data: BootstrapData) => void; notify: (message: string, tone?: 'success' | 'error' | 'info') => void }
 
-export default function AuthPage({ mode, authenticated, notify }: Props) {
+export default function AuthPage({ mode, authenticated, notify, demoEnabled = false, admin = false }: Props) {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const [name, setName] = useState('');
@@ -27,10 +27,10 @@ export default function AuthPage({ mode, authenticated, notify }: Props) {
     e.preventDefault(); setBusy(true); setError('');
     try {
       if (mode === 'recover') { const result = await post<{ message: string; deliveryConfigured?: boolean; csrfToken?: string }>(resetToken ? '/auth/reset-confirm' : '/auth/reset-request', resetToken ? { token: resetToken, newPassword: password } : { email }); if (result.csrfToken) setCsrfToken(result.csrfToken); setSent(true); notify(result.message ?? 'Solicitação recebida.'); }
-      else { const value = await post<BootstrapData>(mode === 'register' ? '/auth/register' : '/auth/login', mode === 'register' ? { name, email, password, referralCode: referral || undefined, termsAccepted: accepted } : { email, password, totp: totp || undefined }); authenticated(value); navigate('/app'); }
+      else { const value = await post<BootstrapData>(mode === 'register' ? '/auth/register' : '/auth/login', mode === 'register' ? { name, email, password, referralCode: referral || undefined, termsAccepted: accepted } : { email, password, totp: totp || undefined }); authenticated(value); navigate(admin ? '/app/admin' : '/app'); }
     } catch (err) { setError((err as Error).message); } finally { setBusy(false); }
   };
-  const demo = async () => { setBusy(true); setError(''); try { const value = await post<BootstrapData>('/auth/demo'); authenticated(value); navigate('/app'); } catch (err) { setError((err as Error).message); } finally { setBusy(false); } };
+  const demo = async () => { setBusy(true); setError(''); try { const value = await post<BootstrapData>('/auth/demo'); authenticated(value); navigate(admin ? '/app/admin' : '/app'); } catch (err) { setError((err as Error).message); } finally { setBusy(false); } };
   return (
     <div className="auth-page">
       <motion.aside
@@ -60,7 +60,7 @@ export default function AuthPage({ mode, authenticated, notify }: Props) {
         >
           <Link to="/" className="auth-mobile-brand"><Brand /></Link>
           <p className="eyebrow">{mode === 'register' ? 'SUA PRÓXIMA OPERAÇÃO' : mode === 'recover' ? 'ACESSO SEGURO' : 'BEM-VINDO À SUA CENTRAL'}</p>
-          <h2>{mode === 'register' ? 'Crie sua conta.' : mode === 'recover' ? resetToken ? 'Nova senha.' : 'Recupere seu acesso.' : 'Entre na operação.'}</h2>
+          <h2>{admin ? 'Acesso administrativo.' : mode === 'register' ? 'Crie sua conta.' : mode === 'recover' ? resetToken ? 'Nova senha.' : 'Recupere seu acesso.' : 'Entre na operação.'}</h2>
           <p>{mode === 'register' ? 'Um lugar para acompanhar máquinas, ciclos e conexões.' : mode === 'recover' ? 'Vamos ajudar você a voltar à plataforma.' : 'Sua operação está a um passo de você.'}</p>
           {sent ? (
             <div className="auth-confirmed">
@@ -122,10 +122,10 @@ export default function AuthPage({ mode, authenticated, notify }: Props) {
           )}
           {mode !== 'recover' && (
             <>
-              <div className="auth-divider"><span>OU CONHEÇA PRIMEIRO</span></div>
+              {demoEnabled && !admin && <><div className="auth-divider"><span>OU CONHEÇA PRIMEIRO</span></div>
               <button className="button button-secondary auth-submit" disabled={busy} onClick={demo}>
                 Abrir demonstração <ArrowUpRight size={17} />
-              </button>
+              </button></>}
               <p className="auth-switch">
                 {mode === 'register' ? 'Já tem uma conta?' : 'Ainda não tem conta?'}
                 <Link to={mode === 'register' ? '/login' : '/register'}>{mode === 'register' ? 'Entrar' : 'Criar conta'}</Link>

@@ -148,9 +148,10 @@ export default function App() {
     {bootError && data && <div className="connection-notice" role="alert"><span><strong>Conexão com a plataforma interrompida.</strong> Os dados podem estar desatualizados. {bootError}</span><button className="button button-secondary" onClick={() => refresh()}>Tentar novamente</button></div>}
     {data && props && <Routes>
       <Route path="/" element={<LandingPage data={data} authenticated={authenticated} notify={notify} />} />
-      <Route path="/login" element={<AuthPage mode="login" authenticated={authenticated} notify={notify} />} />
-      <Route path="/register" element={<AuthPage mode="register" authenticated={authenticated} notify={notify} />} />
-      <Route path="/recover" element={<AuthPage mode="recover" authenticated={authenticated} notify={notify} />} />
+      <Route path="/admin/login" element={<AuthPage admin demoEnabled={false} mode="login" authenticated={authenticated} notify={notify} />} />
+      <Route path="/login" element={<AuthPage demoEnabled={data.demoEnabled} mode="login" authenticated={authenticated} notify={notify} />} />
+      <Route path="/register" element={<AuthPage demoEnabled={data.demoEnabled} mode="register" authenticated={authenticated} notify={notify} />} />
+      <Route path="/recover" element={<AuthPage demoEnabled={data.demoEnabled} mode="recover" authenticated={authenticated} notify={notify} />} />
       <Route path="/app" element={data.user ? <Shell {...props} /> : <Navigate to="/login" replace />}>
         <Route index element={<DashboardPage {...props} />} />
         <Route path="miners" element={<MinersPage {...props} />} />

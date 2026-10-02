@@ -83,7 +83,7 @@ export interface SupportTicket {
   createdAt: string; reply: string | null;
 }
 export interface BootstrapData {
-  mode: AppMode; user: User | null; csrfToken: string;
+  mode: AppMode; user: User | null; csrfToken: string; demoEnabled?: boolean;
   plans: Plan[]; wallets: Wallet[]; miners: Miner[]; ledger: LedgerEntry[];
   network: NetworkData; career: CareerData; marketPositions: MarketPosition[];
   cycles: CycleOffer[]; rules: ProductRule[]; integrations: Integration[]; tickets: SupportTicket[];

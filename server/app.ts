@@ -137,6 +137,7 @@ export async function createApplication(config:Config,options:AppOptions={}):Pro
     if(user)user=await db.get('SELECT * FROM users WHERE id=?',[String(user.id)])??null;
     if(user&&Number(user.is_demo)===1)await db.transaction(tx=>processDemo(tx,user!));
     const data=await bootstrap(db,user,String(currentSession(req).csrf_token));
+    data.demoEnabled=config.demoEnabled;
     const quoteData=quotes.snapshot();
     data.dashboard={...data.dashboard,...quoteData} as BootstrapData['dashboard'];
     data.integrations=data.integrations.map(integration=>integration.id==='payments'?{...integration,name:'2PP',description:provider.state==='CONTRACT_PENDING'?'Credenciais presentes. Contrato de API, assinatura e homologação ainda pendentes.':'Provedor 2PP selecionado. Configuração de credenciais e contrato de API reservados para a etapa final.'}:integration.id==='quotes'?{...integration,name:'Binance · Spot USDT',status:quoteData.quoteStatus==='CONNECTED'?'CONNECTED':quoteData.quoteStatus==='CONNECTING'?'NOT_CONFIGURED':'ERROR',description:'Cotações públicas em USDT; pares inexistentes ou dados vencidos ficam indisponíveis.',updatedAt:quoteData.quoteUpdatedAt}:integration);
