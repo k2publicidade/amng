@@ -2,7 +2,11 @@
 
 ## Estado
 
-O projeto Vercel `amng` já existe e está conectado ao repositório `k2publicidade/amng`. Este checkout prepara a adaptação serverless, mas a produção ainda depende do banco PostgreSQL, das variáveis privadas e de uma conta Vercel adequada ao uso comercial. `americanmining.site` ainda não foi associado ao projeto nem apontado para a Vercel.
+O projeto `amng` está publicado a partir de `k2publicidade/amng`, com PostgreSQL Neon exclusivo `amng-producao`, plano Free e conexão sensível `AMNG_DATABASE_URL`. O domínio `americanmining.site` usa Cloudflare DNS e delegação na Hostinger. A API health/bootstrap, cadastro, login, sessão persistente do usuário teste e bloqueio de acesso administrativo para MEMBER foram verificados em produção em 01/10/2026.
+
+A conta inicial ADMIN foi configurada pelo proprietário e aplicada em redeploy; o login administrativo e MFA ainda aguardam validação. SMTP e integração 2PP continuam pendentes. A publicação não comprova operação financeira ou telemetria física homologada. Credenciais não são registradas neste documento.
+
+A origem canônica é `https://americanmining.site`. `www.americanmining.site` e o alias público antigo redirecionam para ela para manter sessão e validação de origem no mesmo domínio.
 
 ## Arquitetura
 
@@ -22,7 +26,8 @@ Crie um PostgreSQL pelo Marketplace, próximo da região da Function. A aplicaç
 
 | Variável | Uso |
 | --- | --- |
-| `DATABASE_URL` | Conexão PostgreSQL do provedor |
+| `AMNG_DATABASE_URL` | Conexão PostgreSQL pooled da integração Neon exclusiva (prioritária) |
+| `DATABASE_URL` | Alternativa para outro PostgreSQL |
 | `APP_ORIGIN` | `https://americanmining.site` |
 | `SESSION_SECRET` | Segredo aleatório exclusivo, mínimo 32 caracteres |
 | `ADMIN_EMAIL` | E-mail da conta administrativa inicial |
@@ -41,7 +46,7 @@ O projeto `amng` já usa integração GitHub. Uma publicação manual depois de 
 
 1. Adicione `americanmining.site` e `www.americanmining.site` ao projeto Vercel `amng`. Consulte `vercel domains inspect` para obter os valores exatos recomendados para aquele projeto; apex e `www` precisam estar associados. Defina o domínio raiz como canônico e redirecione `www` para ele. A [documentação da Vercel](https://vercel.com/docs/domains/set-up-custom-domain) explica o fluxo com DNS externo.
 2. Na zona Cloudflare, remova/substitua os registros antigos de origem VPS pelos valores retornados pela Vercel. Para continuar usando Cloudflare apenas como DNS, configure os registros como **DNS only** (nuvem cinza), sem proxy laranja.
-3. Antes de trocar nameservers na Hostinger, confirme que a zona Cloudflare contém os registros Vercel e qualquer registro de e-mail/validação que precise permanecer. A delegação atual ainda usa nameservers da Hostinger; só mude para os nameservers Cloudflare exibidos na zona depois dessa conferência.
+3. Antes de trocar nameservers na Hostinger, confirme que a zona Cloudflare contém os registros Vercel e qualquer registro de e-mail/validação que precise permanecer. A delegação foi alterada para `dimitris.ns.cloudflare.com` e `tara.ns.cloudflare.com`; só mude para os nameservers Cloudflare exibidos na zona depois dessa conferência.
 4. Aguarde a delegação e a validação Vercel, confirme certificado TLS e teste o domínio canônico e o redirecionamento `www` antes de anunciar produção.
 
 ## Operação

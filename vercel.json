@@ -16,5 +16,29 @@
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
+  ],
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.americanmining.site"
+        }
+      ],
+      "destination": "https://americanmining.site/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "amng-virid.vercel.app"
+        }
+      ],
+      "destination": "https://americanmining.site/:path*",
+      "permanent": true
+    }
   ]
 }
