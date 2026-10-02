@@ -17,6 +17,8 @@ export class BinanceQuotes extends EventEmitter {
   private stopped=false;
   private state:QuoteSnapshot['quoteStatus']='UNAVAILABLE';
   private retries=0;
+  private lastRefreshAt=0;
+  private refreshPromise:Promise<void>|null=null;
   constructor(private enabled=true,private apiOrigin='https://api.binance.com',private streamOrigin='wss://stream.binance.com:9443') {super();}
   start(){if(this.enabled&&!this.stopped){this.state='CONNECTING';void this.connect();}}
   snapshot(now=Date.now()):QuoteSnapshot {
@@ -35,19 +37,43 @@ export class BinanceQuotes extends EventEmitter {
     if(!response.ok)throw new Error(`Binance public API ${response.status}`);
     return response.json();
   }
+  async refresh():Promise<QuoteSnapshot>{
+    if(!this.enabled||this.stopped)return this.snapshot();
+    if(Date.now()-this.lastRefreshAt<15_000)return this.snapshot();
+    if(!this.refreshPromise){
+      this.state=this.quotes.size?'STALE':'CONNECTING';
+      this.refreshPromise=(async()=>{
+        try{
+          await this.refreshMarketData();
+          this.lastRefreshAt=Date.now();this.state='CONNECTED';this.retries=0;
+        }catch{
+          this.state=this.quotes.size?'STALE':'UNAVAILABLE';
+        }finally{
+          this.emit('update',this.snapshot());
+        }
+      })();
+    }
+    try{await this.refreshPromise;}finally{this.refreshPromise=null;}
+    return this.snapshot();
+  }
+  private async refreshMarketData():Promise<string[]>{
+    const exchange=await this.fetchJson('/api/v3/exchangeInfo') as {symbols?:{symbol:string;baseAsset:string;quoteAsset:string;status:string}[]};
+    for(const coin of COINS){
+      const market=exchange.symbols?.find(s=>s.baseAsset===coin&&s.quoteAsset==='USDT'&&s.status==='TRADING');
+      if(market){this.pairs.set(coin,market.symbol);if(this.quotes.get(coin)?.symbol!==market.symbol)this.quotes.delete(coin);}
+      else{this.pairs.delete(coin);this.quotes.delete(coin);}
+    }
+    const symbols=[...this.pairs.values()];
+    if(!symbols.length)throw new Error('No eligible Binance spot pairs');
+    const initial=await this.fetchJson(`/api/v3/ticker/price?symbols=${encodeURIComponent(JSON.stringify(symbols))}`) as {symbol:string;price:string}[];
+    const receivedAt=Date.now();
+    for(const quote of initial)this.ingest(quote.symbol,quote.price,receivedAt);
+    return symbols;
+  }
   private async connect(){
     if(this.stopped)return;
     try{
-      const exchange=await this.fetchJson('/api/v3/exchangeInfo') as {symbols?:{symbol:string;baseAsset:string;quoteAsset:string;status:string}[]};
-      for(const coin of COINS){
-        const market=exchange.symbols?.find(s=>s.baseAsset===coin&&s.quoteAsset==='USDT'&&s.status==='TRADING');
-        if(market){this.pairs.set(coin,market.symbol);if(this.quotes.get(coin)?.symbol!==market.symbol)this.quotes.delete(coin);}
-        else{this.pairs.delete(coin);this.quotes.delete(coin);}
-      }
-      if(!this.pairs.size)throw new Error('No eligible Binance spot pairs');
-      const symbols=[...this.pairs.values()];
-      const initial=await this.fetchJson(`/api/v3/ticker/price?symbols=${encodeURIComponent(JSON.stringify(symbols))}`) as {symbol:string;price:string}[];
-      for(const quote of initial)this.ingest(quote.symbol,quote.price,Date.now());
+      const symbols=await this.refreshMarketData();
       if(this.stopped)return;
       const streams=symbols.map(s=>`${s.toLowerCase()}@miniTicker`).join('/');
       const socket=new WebSocket(`${this.streamOrigin}/stream?streams=${streams}`);this.socket=socket;

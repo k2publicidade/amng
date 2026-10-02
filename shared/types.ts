@@ -16,9 +16,9 @@ export interface Wallet {
 export interface Miner {
   id: string; planId: string; planName: string; coin: string; machine: string; image: string;
   color: string; principalCents: number; rateBps: number; powerWeight: number;
-  status: 'READY' | 'MINING' | 'EXPIRED' | 'CANCELLED';
+  status: 'READY' | 'MINING' | 'PAUSED' | 'EXPIRED' | 'CANCELLED';
   startedAt: string; expiresAt: string; cycleStartedAt: string | null;
-  cycleEndsAt: string | null; nextActivationAt: string | null; cycleCount: number;
+  cycleEndsAt: string | null; pausedAt: string | null; nextActivationAt: string | null; cycleCount: number;
   totalEarnedCents: number; cycleEstimatedCents: number; allocatedHashrate: number | null;
   hashrateUnit: string | null; hardwareStatus: 'UNAVAILABLE' | 'ONLINE' | 'OFFLINE'; isDemo: boolean;
 }
@@ -90,7 +90,7 @@ export interface BootstrapData {
   dashboard: {
     todayMiningCents: number; totalMiningCents: number; profitSharingCents: number;
     productionHistory: { date: string; miningCents: number; sharingCents: number }[];
-    quoteUpdatedAt: string | null; quotes: { coin: string; usd: number | null; updatedAt?: string | null }[];
+    quoteUpdatedAt: string | null; quotes: { coin: string; usd: number | null; symbol?: string | null; updatedAt?: string | null }[];
     quoteAsset?: 'USDT'; quoteStatus?: string;
   };
 }

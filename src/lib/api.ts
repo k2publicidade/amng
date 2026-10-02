@@ -18,7 +18,14 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   const response = await fetch(url, {
     ...options,
     credentials: base ? 'include' : 'same-origin',
+    signal: options.signal ?? AbortSignal.timeout(20_000),
     headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken, ...options.headers },
+  }).catch((error: Error) => {
+    if (options.signal?.aborted) throw error;
+    const command = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(options.method ?? 'GET');
+    throw new ApiError(command
+      ? 'Não foi possível confirmar a operação. Confira o estado atualizado antes de tentar novamente.'
+      : 'Não foi possível atualizar os dados. Verifique sua conexão e tente novamente.', 0, 'CONNECTION_UNCERTAIN');
   });
 
   const contentType = response.headers.get('content-type') || '';
@@ -44,4 +51,3 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
 
 export const post = <T>(path: string, body: unknown = {}) => api<T>(path, { method: 'POST', body: JSON.stringify(body) });
 export const patch = <T>(path: string, body: unknown) => api<T>(path, { method: 'PATCH', body: JSON.stringify(body) });
-

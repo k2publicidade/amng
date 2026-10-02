@@ -2,6 +2,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import pg from 'pg';
+import { setTimeout as delay } from 'node:timers/promises';
+import { attachDatabasePool } from '@vercel/functions';
 
 export type SqlValue = string | number | null;
 export type Row = Record<string, unknown>;
@@ -13,6 +15,10 @@ export interface Executor {
 }
 export interface Database extends Executor {
   dialect: 'sqlite' | 'postgres';
+  /** Serialize one-time schema and seed work across application instances. */
+  withInitializationLock<T>(work: () => Promise<T>): Promise<T>;
+  /** PostgreSQL can replay this callback after a serialization/deadlock rollback.
+   * Keep side effects in the database and return results instead of mutating external state. */
   transaction<T>(work: (tx: Executor) => Promise<T>): Promise<T>;
   script(sql: string): Promise<void>;
   close(): Promise<void>;
@@ -37,6 +43,7 @@ export function sqliteDatabase(filename: string): Database {
   connection.exec('PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
   if (filename !== ':memory:') connection.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL;');
   const mutex = new Mutex();
+  const initializationMutex = new Mutex();
   const tx: Executor = {
     async get<T extends Row>(sql: string, params: SqlValue[] = []) {
       return connection.prepare(sql).get(...params) as T | undefined;
@@ -51,6 +58,7 @@ export function sqliteDatabase(filename: string): Database {
   };
   return {
     dialect: 'sqlite',
+    withInitializationLock: work => initializationMutex.use(work),
     get: (sql, params) => mutex.use(() => tx.get(sql, params)),
     all: (sql, params) => mutex.use(() => tx.all(sql, params)),
     run: (sql, params) => mutex.use(() => tx.run(sql, params)),
@@ -99,20 +107,44 @@ function postgresExecutor(queryable: pg.Pool | pg.PoolClient): Executor {
   };
 }
 export function postgresDatabase(url: string): Database {
-  const pool = new pg.Pool({ connectionString: url, max: 10, connectionTimeoutMillis: 5000 });
+  const pool = new pg.Pool({ connectionString: url, max: process.env.VERCEL ? 3 : 10, connectionTimeoutMillis: 5000 });
+  if (process.env.VERCEL) attachDatabasePool(pool);
   const executor = postgresExecutor(pool);
   return {
     ...executor, dialect: 'postgres',
+    async withInitializationLock<T>(work: () => Promise<T>): Promise<T> {
+      const client = await pool.connect();
+      const lock = [1296917067, 1];
+      let locked = false;
+      try {
+        await client.query('SELECT pg_advisory_lock($1, $2)', lock);
+        locked = true;
+        return await work();
+      } finally {
+        try {
+          if (locked) await client.query('SELECT pg_advisory_unlock($1, $2)', lock);
+        } finally { client.release(); }
+      }
+    },
     async script(sql) { await pool.query(sql); },
     async transaction<T>(work: (tx: Executor) => Promise<T>): Promise<T> {
-      const client = await pool.connect();
-      try {
-        await client.query('BEGIN ISOLATION LEVEL SERIALIZABLE');
-        const result = await work(postgresExecutor(client));
-        await client.query('COMMIT');
-        return result;
-      } catch (error) { await client.query('ROLLBACK'); throw error; }
-      finally { client.release(); }
+      for(let attempt=0; ; attempt++){
+        const client = await pool.connect();
+        let releaseError:Error|undefined;
+        try {
+          await client.query('BEGIN ISOLATION LEVEL SERIALIZABLE');
+          const result = await work(postgresExecutor(client));
+          await client.query('COMMIT');
+          return result;
+        } catch (error) {
+          try{await client.query('ROLLBACK');}
+          catch(rollbackError){releaseError=rollbackError as Error;throw error;}
+          const code=(error as {code?:string}).code;
+          // Known transaction aborts only; uncertain connections or commits are never replayed.
+          if(attempt>=4||!['40001','40P01'].includes(code??''))throw error;
+        } finally { client.release(releaseError); }
+        await delay(15*2**attempt+Math.floor(Math.random()*15));
+      }
     },
     async close() { await pool.end(); },
   };

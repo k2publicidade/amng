@@ -83,6 +83,7 @@ function PowerIllumination({ visual }: { visual: MinerVisualAsset }) {
         <g className="visuals-miner-fan-light">
           <circle r=".5" fill="transparent" />
           <circle className="visuals-miner-fan-trace" r=".47" />
+          <circle className="visuals-miner-fan-trace visuals-miner-fan-trace--inner" r=".34" />
         </g>
         <circle className="visuals-miner-hub-led" r=".045" />
       </g>
@@ -110,6 +111,7 @@ function MinerImage({ planId, variant, active, starting }: { planId: string; var
     <img className="visuals-miner-image visuals-miner-image--off" src={visual.image} alt="" aria-hidden="true" loading={variant === 'hero' ? 'eager' : 'lazy'} fetchPriority={variant === 'hero' ? 'high' : 'auto'} decoding="async" draggable={false} onError={() => setFailed(true)} />
     {needsOnImage && <img className="visuals-miner-image visuals-miner-image--on" src={visual.onImage} alt="" aria-hidden="true" loading={variant === 'hero' || active || starting ? 'eager' : 'lazy'} fetchPriority={variant === 'hero' && active ? 'high' : 'auto'} decoding="async" draggable={false} onLoad={() => { setOnLoaded(true); setOnFailed(false); }} onError={() => setOnFailed(true)} />}
     <PowerIllumination visual={visual} />
+    <div className="visuals-miner-boot-scan" aria-hidden="true" />
   </div>;
 }
 
@@ -120,7 +122,7 @@ export default function MinerVisual({ planId, active = false, starting = false, 
   const style = { '--visuals-miner-accent': visual?.accent ?? minerAccent(planId), '--visuals-on-transform': visual?.onTransform ?? 'none' } as CSSProperties;
   const scale = visual?.presentationScale ?? 1;
   return (
-    <div className={`visuals-miner visuals-miner--${variant} ${active ? 'visuals-miner--active' : ''} ${active && starting ? 'visuals-miner--starting' : ''} ${className}`.trim()} style={style} data-plan={planId}>
+    <div className={`visuals-miner visuals-miner--${variant} ${active ? 'visuals-miner--active' : ''} ${active && starting ? 'visuals-miner--starting' : ''} ${className}`.trim()} style={style} data-plan={planId} data-power={active ? starting ? 'starting' : 'on' : 'off'}>
       <div className="visuals-miner-aura" aria-hidden="true" />
       <div className="visuals-miner-platform" aria-hidden="true"><span /><span /><span /></div>
       <div className="visuals-miner-stage">

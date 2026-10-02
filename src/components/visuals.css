@@ -79,3 +79,21 @@
   .visuals-miner-fan-light, .visuals-miner-hub-halo, .visuals-miner-hub-led { animation: none !important; }
   .visuals-miner-product { will-change: auto; }
 }
+
+/* Product ignition: power rail, staggered fan lights and a single diagnostic sweep. */
+.visuals-miner-fan-trace--inner { stroke-width: .012; stroke-dasharray: .28 1.856; opacity: .17; transform: rotate(140deg); transform-origin: center; }
+.visuals-miner-boot-scan { position: absolute; z-index: 3; inset: 8% 12%; overflow: hidden; opacity: 0; pointer-events: none; border-radius: 8px; }
+.visuals-miner-boot-scan::after { content: ''; position: absolute; inset: -12% 0 auto; height: 16%; background: linear-gradient(transparent, color-mix(in srgb, var(--visuals-miner-accent) 12%, transparent), transparent); border-bottom: 1px solid color-mix(in srgb, var(--visuals-miner-accent) 28%, transparent); }
+.visuals-miner--starting .visuals-miner-boot-scan { animation: visuals-scan-reveal 3600ms ease both; }
+.visuals-miner--starting .visuals-miner-boot-scan::after { animation: visuals-diagnostic-sweep 2000ms 650ms cubic-bezier(.22,1,.36,1) both; }
+.visuals-miner--starting .visuals-miner-fan-light { animation-delay: var(--visuals-light-delay, 0ms), 3600ms; }
+.visuals-miner--starting .visuals-miner-platform span { animation: visuals-platform-boot 3600ms ease both; }
+.visuals-miner--starting .visuals-miner-platform span:nth-child(2) { animation-delay: 140ms; }
+.visuals-miner--starting .visuals-miner-platform span:nth-child(3) { animation-delay: 280ms; }
+@keyframes visuals-scan-reveal { 0%, 14%, 88%, 100% { opacity: 0; } 25%, 65% { opacity: 1; } }
+@keyframes visuals-diagnostic-sweep { from { transform: translateY(0); } to { transform: translateY(750%); } }
+@keyframes visuals-platform-boot { 0%, 12% { opacity: 0; border-color: transparent; } 48% { opacity: .8; border-color: color-mix(in srgb, var(--visuals-miner-accent) 45%, transparent); } 100% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) {
+  .visuals-miner-boot-scan { display: none; }
+  .visuals-miner-platform span { animation: none !important; }
+}

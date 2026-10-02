@@ -28,6 +28,8 @@ test('concurrent purchases cannot spend the same funds twice',async t=>{
   const db=await database();t.after(()=>db.close());const user=await db.transaction(tx=>demoUser(tx));await db.transaction(tx=>fund(tx,user,8000));
   const results=await Promise.allSettled([db.transaction(tx=>purchase(tx,user,{planId:'etc',idempotencyKey:'race-purchase-one'})),db.transaction(tx=>purchase(tx,user,{planId:'etc',idempotencyKey:'race-purchase-two'}))]);
   assert.equal(results.filter(r=>r.status==='fulfilled').length,1);assert.equal(await balance(db,String(user.id),'deposit'),0);
+  const rejected=results.find(result=>result.status==='rejected');
+  assert.ok(rejected?.status==='rejected'&&rejected.reason instanceof DomainError&&rejected.reason.code==='INSUFFICIENT_BALANCE');
   assert.equal((await db.get('SELECT COUNT(*) AS count FROM contracts WHERE user_id=?',[String(user.id)]))?.count,1);
 });
 test('rollback preserves balances and the append-only ledger rejects editing and deleting entries',async t=>{
@@ -35,6 +37,16 @@ test('rollback preserves balances and the append-only ledger rejects editing and
   await assert.rejects(db.transaction(async tx=>{await postLedger(tx,{user,wallet:'deposit',amount:-2500,key:'abort:debit',kind:'TEST',description:'rollback',reference:'abort'});throw new Error('forced transactional failure');}));
   assert.equal(await balance(db,String(user.id),'deposit'),5000);assert.equal(await db.get('SELECT id FROM ledger_entries WHERE business_key=?',['abort:debit']),undefined);
   await assert.rejects(db.run('UPDATE ledger_entries SET amount_cents=1 WHERE user_id=?',[String(user.id)]));await assert.rejects(db.run('DELETE FROM ledger_entries WHERE user_id=?',[String(user.id)]));
+});
+
+test('simultaneous purchases with the same key all return one contract and debit',async t=>{
+  const db=await database();t.after(()=>db.close());
+  const user=await db.transaction(tx=>demoUser(tx));await db.transaction(tx=>fund(tx,user,10000));
+  const input={planId:'sc',idempotencyKey:'concurrent-stable-purchase'};
+  const receipts=await Promise.all(Array.from({length:4},()=>db.transaction(tx=>purchase(tx,user,input))));
+  assert.equal(new Set(receipts).size,1);
+  assert.equal(await balance(db,String(user.id),'deposit'),7500);
+  assert.equal((await db.get('SELECT COUNT(*) AS count FROM contracts WHERE user_id=?',[String(user.id)]))?.count,1);
 });
 test('catalog changes preserve historical contract snapshot and duplicate activation/catchup is harmless',async t=>{
   const db=await database();t.after(()=>db.close());const user=await db.transaction(tx=>demoUser(tx));await db.transaction(tx=>fund(tx,user,5000));
@@ -63,7 +75,7 @@ test('wallet conversion conserves available funds and market principal/earnings 
   const now=Date.UTC(2026,8,1);const id=await db.transaction(tx=>openMarket(tx,user,{amountCents:5000,idempotencyKey:'market-entry-key'},now));
   await db.transaction(tx=>closeMarket(tx,user,id,'market-withdraw-key',now+2*DAY));await db.transaction(tx=>closeMarket(tx,user,id,'market-withdraw-key',now+2*DAY));
   assert.equal(await balance(db,String(user.id),'deposit'),5000);assert.equal(await balance(db,String(user.id),'earnings'),5040);
-  const journals=await db.all('SELECT journal_id,SUM(amount_cents) AS total FROM accounting_lines GROUP BY journal_id');assert.ok(journals.every(j=>j.total===0));
+  const journals=await db.all('SELECT journal_id,SUM(amount_cents) AS total FROM accounting_lines GROUP BY journal_id');assert.ok(journals.every(j=>Number(j.total)===0));
 });
 test('deposit callback-free simulator requires no remote payment and remains idempotent',async t=>{
   const db=await database();t.after(()=>db.close());const user=await db.transaction(tx=>demoUser(tx));const input={amountCents:2500,idempotencyKey:'deposit-stable-key'};

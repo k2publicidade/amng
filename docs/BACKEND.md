@@ -29,7 +29,7 @@ Revisão estática em 28/09/2026. Este documento descreve o código existente; n
 | `server/providers/two-pp.ts` | Fronteira da 2PP; contrato ainda pendente |
 | `server/fixtures.ts` | Histórico e rede explicitamente simulados |
 
-O schema inclui identidades/sessões, resets, catálogo, regras, contratos, ativações, diários contábeis, ledger, comandos idempotentes, pagamentos/eventos, market, comissões/estornos, carreira/funding/fechamentos, cupons, suporte e auditoria. A abertura aplica o schema e registra versões 1 e 2. As alterações futuras de schema precisam de migração própria; os registros de versão existentes não comprovam um ensaio de atualização ou restauração.
+O schema inclui identidades/sessões, resets, catálogo, regras, contratos, ativações, diários contábeis, ledger, comandos idempotentes, pagamentos/eventos, market, comissões/estornos, carreira/funding/fechamentos, cupons, suporte e auditoria. `mining_cycles` guarda `paused_at` para o ciclo congelado. A abertura aplica o schema e registra versões 1 a 4, incluindo a migração aditiva de `admin_role` e de `paused_at`. As alterações futuras de schema precisam de migração própria; os registros de versão existentes não comprovam um ensaio de atualização ou restauração.
 
 ## Integridade financeira
 
@@ -66,6 +66,8 @@ Todos os caminhos abaixo começam com `/api`. Mutações, exceto o webhook reser
 | `POST /auth/2fa/disable` | `password?`, `totp` | Própria conta |
 | `POST /orders` | `planId`, `couponCode?`, `idempotencyKey` | Participante; real bloqueado |
 | `POST /miners/:id/activate` | Abre um ciclo elegível; repetição retorna o ciclo ativo | Contrato do titular; real bloqueado |
+| `POST /miners/:id/pause` | `idempotencyKey`; desliga a máquina e congela o ciclo confirmado | Contrato do titular; sem movimentação no ledger |
+| `POST /miners/:id/resume` | `idempotencyKey`; devolve o tempo congelado ao ciclo e confirma a retomada | Contrato do titular; real bloqueado pelo mesmo gate do rendimento |
 | `GET /miners/:id/statement?days=30&page=1` | Produção agregada do período e extrato de créditos confirmados, em páginas de 12 | Contrato do titular, mesmo escopo e natureza demo/real |
 | `POST /wallets/deposits` | `amountCents`, `idempotencyKey?` | Demonstração |
 | `POST /wallets/withdrawals` | `wallet`, `amountCents`, `idempotencyKey?` | Demonstração; depósitos não são origem sacável |
@@ -101,6 +103,14 @@ Quando a chave é opcional no JSON de um comando financeiro, `Idempotency-Key` �
 
 Há somente `MEMBER` e `ADMIN`. Suporte, financeiro, operação, aprovador e administrador de leitura são papéis propostos no plano e ainda não implementados.
 
+## Pausa e religamento de um ciclo
+
+`POST /miners/:id/pause` desliga a máquina sem tocar no ledger: o ciclo confirmado continua o mesmo e ganha `paused_at`. Com `paused_at` preenchido, `processDemo` não apura aquele ciclo, mesmo que `ends_at` já tenha passado, e o DTO passa a devolver `status: 'PAUSED'` com `pausedAt`, `cycleStartedAt` e `cycleEndsAt` preservados. Os gauges da interface congelam no instante da pausa; nenhum crédito é produzido enquanto a máquina está desligada.
+
+`POST /miners/:id/resume` devolve o intervalo pausado ao ciclo: `ends_at` avança exatamente pela duração da pausa e `paused_at` volta a nulo. O prazo do contrato é imutável (trigger `contracts_snapshot_immutable`), então a retomada é recusada com `CONTRACT_WINDOW_EXCEEDED` quando o tempo congelado não cabe antes de `expires_at`; a máquina permanece pausada e o ciclo continua sem apuração. Ativação de uma máquina pausada é recusada com `CYCLE_PAUSED`, e ambos os comandos usam chave idempotente (`cycle-pause`, `cycle-resume`).
+
+Um ciclo pausado que chega ao fim do contrato não é liquidado: a máquina estava desligada, e o crédito do ciclo depende da conclusão do período. A interface exibe a data de expiração no aviso de pausa para que a retomada aconteça dentro do prazo.
+
 ## Extrato de uma máquina
 
 `GET /miners/:id/statement` é uma leitura transacionada; não chama processamento financeiro nem altera o ledger. `days` aceita inteiros de 1 a 30 (padrão 30); `page` de 1 a 100000 (padrão 1). Query parameters desconhecidos são recusados. O contrato deve pertencer ao titular, escopo e natureza da conta; caso contrário retorna `404 MINER_NOT_FOUND`.
@@ -128,6 +138,10 @@ Binance usa `exchangeInfo` para localizar pares Spot `TRADING` em USDT, REST par
 Configure `.env` conforme `.env.example`: PostgreSQL, origem, segredo, administrador, SMTP e parâmetros aprovados. Nunca copie arquivos de dados/segredos para assets públicos.
 
 Ainda faltam evidências de migração PostgreSQL, backup/restauração, monitoramento de jobs e alertas, reconciliação do provedor, rollback sem apagar ledger e lançamento controlado. Produção financeira também depende de termos, jurisdição, regras de origem/liquidação, taxas de saque, funding, identidade e fontes operacionais. Alterar um flag ou preencher uma chave da 2PP não conclui essas etapas.
+
+**Atualização de 01/10/2026:** a suíte de 28 testes foi executada com sucesso em SQLite e PostgreSQL isolado. Migrações e um dump/restauração de 29 tabelas foram verificados localmente, incluindo journals balanceados e imutabilidade preservada. A evidência está em `VERIFICACAO_2026-10-01.md`; o ensaio no destino de produção e a homologação de integrações continuam pendentes.
+
+Transações PostgreSQL usam serializable. Em abortos conhecidos (`40001` e `40P01`), o adaptador faz rollback e repete toda a função até cinco tentativas; conexão/commit incertos e violações de regra não são repetidos. As funções transacionadas devem produzir efeitos apenas no banco e devolver o resultado, sem envio externo ou acumulação em variáveis da tentativa anterior. Essa recuperação segue a [documentação PostgreSQL 17](https://www.postgresql.org/docs/17/mvcc-serialization-failure-handling.html).
 
 ## Verificação registrada nesta revisão
 

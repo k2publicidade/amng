@@ -260,7 +260,7 @@ export function CareerPage({ data }: WorkspacePageProps) {
   const career = data.career;
   const demo = data.mode === 'demo';
   const currentStage = career.stages.findIndex((stage) => stage.name === career.stage);
-  const qualifying = data.miners.filter((miner) => miner.status === 'READY' || miner.status === 'MINING');
+  const qualifying = data.miners.filter((miner) => miner.status === 'READY' || miner.status === 'MINING' || miner.status === 'PAUSED');
   const payroll = data.ledger.filter((entry) => /SALARY|BONUS|CAREER/.test(entry.kind));
   const funding = career.funding;
   const currentMonth = funding?.month || new Date(new Date(career.nextClosingAt).getTime() - 1).toISOString().slice(0, 7);

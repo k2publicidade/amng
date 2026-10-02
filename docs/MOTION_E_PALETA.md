@@ -21,8 +21,9 @@ Fonte única: `shared/miner-theme.ts`. Catálogo, DTO, imagens, luzes, partícul
 3. Resposta confirmada `MINING`: inicia a partida de 3,6 segundos. Primeiro acendem os hubs; a luz cresce gradualmente e revela a camada ligada, seguida pelo pulso de energia.
 4. Estado ativo: imagem ligada persiste após a partida e após reabrir a página, a partir do ciclo retornado pelo servidor.
 5. Encerramento: contrato expirado/cancelado aparece encerrado. Ciclo concluído permite nova ativação apenas quando houver 24 horas elegíveis no contrato.
+6. `PAUSED`: a máquina aparece desligada sobre uma base dessaturada, com o aviso "Máquina desligada · tempo congelado" e o anel de progresso parado no ponto da pausa. O botão passa a oferecer **Religar máquina**.
 
-O botão **Rever animação** reproduz a apresentação de uma máquina já ativa. Não envia uma ativação, altera o ciclo ou gera créditos.
+O comando **Pausar ciclo** desliga a máquina e congela o tempo restante do ciclo confirmado; não há apresentação de partida nem crédito enquanto ela estiver desligada. **Religar máquina** retoma o mesmo ciclo e reproduz a partida completa de 3,6 segundos, sempre a partir da confirmação do servidor — a mesma sequência da primeira ativação, sem botão separado de revisão. Em `prefers-reduced-motion`, a retomada aplica a imagem ligada imediatamente.
 
 ## Continuidade visual e desempenho
 

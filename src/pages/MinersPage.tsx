@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { lazy, Suspense, useEffect, useState, type CSSProperties } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
 import {
   Activity,
   ArrowLeft,
@@ -11,6 +11,7 @@ import {
   Cpu,
   Info,
   Layers,
+  Pause,
   Power,
   Radio,
   ShieldCheck,
@@ -21,14 +22,17 @@ import type { PortalProps } from '../lib/portal';
 import type { Miner } from '../../shared/types';
 import { minerAccent } from '../../shared/miner-theme';
 import { useMinerActivation } from '../lib/useMinerActivation';
-import { countdown, elapsedRatio, useMiningClock } from '../lib/mining';
+import { countdown, cycleClock, elapsedRatio, minerStatusLabel, useMiningClock } from '../lib/mining';
 import { date, money, number, percent } from '../lib/format';
 import { pageVariants, staggerContainer, fadeUp, scaleIn, dynamicEase } from '../lib/animations';
 import MinerVisual from '../components/MinerVisual';
 import Gauge from '../components/Gauge';
 import IgnitionStatus from '../components/IgnitionStatus';
-import QuantumReactorCanvas from '../components/QuantumReactorCanvas';
 import './miners.css';
+
+const QuantumReactorCanvas = lazy(() => import('../components/QuantumReactorCanvas'));
+
+const statusClass = (status: Miner['status']) => status === 'MINING' ? 'status-mining' : status === 'PAUSED' ? 'status-paused' : status === 'READY' ? 'status-ready' : 'status-expired';
 
 export default function MinersPage({ data, refresh, notify }: PortalProps) {
   const [params, setParams] = useSearchParams();
@@ -37,34 +41,10 @@ export default function MinersPage({ data, refresh, notify }: PortalProps) {
   const [expanded, setExpanded] = useState(false);
   const now = useMiningClock();
 
-  // Replaying the presentation leaves the confirmed cycle untouched.
-  const [pulseId, setPulseId] = useState<string | null>(null);
-  const [pulseStep, setPulseStep] = useState(0);
-  const pulseTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const reducedMotion = useReducedMotion();
-
-  const triggerPulse = (minerId: string) => {
-    if (pulseId || ignition.busy || data.miners.find(item => item.id === minerId)?.status !== 'MINING') return;
-    setPulseId(minerId);
-    setPulseStep(0);
-    pulseTimers.current.forEach(clearTimeout);
-    if (!reducedMotion) {
-      pulseTimers.current.push(setTimeout(() => setPulseStep(1), 700));
-      pulseTimers.current.push(setTimeout(() => setPulseStep(2), 2100));
-    }
-    pulseTimers.current.push(setTimeout(() => {
-      setPulseId(null);
-      setPulseStep(0);
-    }, reducedMotion ? 160 : 3600));
-  };
-
   const selected = data.miners.find(m => m.id === params.get('miner'));
 
   useEffect(() => {
-    setPulseId(null);
-    pulseTimers.current.forEach(clearTimeout);
     window.scrollTo({ top: 0, behavior: 'instant' });
-    return () => { pulseTimers.current.forEach(clearTimeout); };
   }, [params.get('miner')]);
 
   const choose = (m: Miner) => {
@@ -75,12 +55,14 @@ export default function MinersPage({ data, refresh, notify }: PortalProps) {
   const plan = data.plans.find(p => p.id === selected?.planId);
   const ratio = selected ? elapsedRatio(selected, now) : 0;
 
-  // Fleet Telemetry KPIs
+  // Fleet Telemetry KPIs. A paused machine keeps its contract and its allocated power.
   const activeMiningCount = data.miners.filter(m => m.status === 'MINING').length;
   const readyCount = data.miners.filter(m => m.status === 'READY').length;
-  const totalPowerWeight = data.miners.reduce((acc, m) => acc + (['READY', 'MINING'].includes(m.status) ? m.powerWeight : 0), 0);
+  const pausedCount = data.miners.filter(m => m.status === 'PAUSED').length;
+  const contractedStatuses: Miner['status'][] = ['READY', 'MINING', 'PAUSED'];
+  const totalPowerWeight = data.miners.reduce((acc, m) => acc + (contractedStatuses.includes(m.status) ? m.powerWeight : 0), 0);
   const total24hEstimatedCents = data.miners.reduce(
-    (acc, m) => acc + (m.status === 'MINING' || m.status === 'READY' ? m.cycleEstimatedCents : 0),
+    (acc, m) => acc + (contractedStatuses.includes(m.status) ? m.cycleEstimatedCents : 0),
     0
   );
 
@@ -121,7 +103,7 @@ export default function MinersPage({ data, refresh, notify }: PortalProps) {
             </span>
             <div className="telemetry-value">
               {activeMiningCount}
-              <small>/ {data.miners.length} CONTRATOS</small>
+              <small>/ {data.miners.length} CONTRATOS{pausedCount ? ` · ${pausedCount} PAUSADA${pausedCount > 1 ? 'S' : ''}` : ''}</small>
             </div>
           </div>
 
@@ -166,9 +148,10 @@ export default function MinersPage({ data, refresh, notify }: PortalProps) {
         <motion.section className="fleet-browser cyber-fleet-browser" variants={fadeUp}>
           <div className="segmented-control cyber-filter-matrix" aria-label="Filtrar máquinas">
             {[
-              ['ALL', 'Todas as Máquinas'],
+              ['ALL', 'Todas'],
               ['MINING', 'Em Ciclo'],
-              ['READY', 'Prontas para ativar'],
+              ['PAUSED', 'Pausadas'],
+              ['READY', 'Prontas'],
             ].map(([id, label]) => {
               const count = data.miners.filter(m => id === 'ALL' || m.status === id).length;
               return (
@@ -202,6 +185,7 @@ export default function MinersPage({ data, refresh, notify }: PortalProps) {
                     whileTap={{ scale: 0.98 }}
                     role="button"
                     tabIndex={0}
+                    aria-pressed={isSelected}
                     onKeyDown={e => {
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
@@ -214,22 +198,14 @@ export default function MinersPage({ data, refresh, notify }: PortalProps) {
                       <span className="cyber-card-rig-id">
                         RIG #{String(i + 1).padStart(2, '0')} // {m.coin}
                       </span>
-                      <span
-                        className={`cyber-status-pill ${
-                          m.status === 'MINING'
-                            ? 'status-mining'
-                            : m.status === 'READY'
-                              ? 'status-ready'
-                              : 'status-expired'
-                        }`}
-                      >
+                      <span className={`cyber-status-pill ${statusClass(m.status)}`}>
                         <i className="status-dot" />
-                        {m.status === 'MINING' ? 'EM CICLO' : m.status === 'READY' ? 'PRONTA' : 'ENCERRADA'}
+                        {minerStatusLabel(m.status)}
                       </span>
                     </header>
 
                     <div className="cyber-card-visual-window">
-                      <MinerVisual planId={m.planId} variant="card" active={m.status === 'MINING'} />
+                      <MinerVisual planId={m.planId} variant="card" active={m.status === 'MINING'} starting={ignition.startingId === m.id} />
                     </div>
 
                     <div className="cyber-card-body">
@@ -241,18 +217,20 @@ export default function MinersPage({ data, refresh, notify }: PortalProps) {
                         </div>
                       </div>
 
-                      {/* Mini Fuel Cycle Bar for Active Machines */}
+                      {/* Mini Fuel Cycle Bar: paused machines keep the frozen progress. */}
                       <div className="cyber-card-fuel-bar">
                         <div
                           className="cyber-card-fuel-fill"
                           style={{
-                            width: m.status === 'MINING' ? `${minerRatio * 100}%` : m.status === 'READY' ? '0%' : '100%',
+                            width: m.status === 'MINING' || m.status === 'PAUSED' ? `${minerRatio * 100}%` : m.status === 'READY' ? '0%' : '100%',
                             background:
                               m.status === 'MINING'
                                 ? `linear-gradient(90deg, color-mix(in srgb, ${minerAccent(m.planId)} 50%, #17344b), ${minerAccent(m.planId)})`
-                                : m.status === 'READY'
-                                  ? 'rgba(245, 158, 11, 0.4)'
-                                  : 'rgba(100, 116, 139, 0.4)',
+                                : m.status === 'PAUSED'
+                                  ? 'rgba(125, 148, 170, 0.45)'
+                                  : m.status === 'READY'
+                                    ? 'rgba(245, 158, 11, 0.4)'
+                                    : 'rgba(100, 116, 139, 0.4)',
                           }}
                         />
                       </div>
@@ -316,38 +294,30 @@ export default function MinersPage({ data, refresh, notify }: PortalProps) {
                       CONTRATO #{selected.id.slice(-8).toUpperCase()} // {selected.coin}
                     </span>
                   </div>
-                  <span
-                    className={`cyber-status-pill ${
-                      selected.status === 'MINING'
-                        ? 'status-mining'
-                        : selected.status === 'READY'
-                          ? 'status-ready'
-                          : 'status-expired'
-                    }`}
-                  >
+                  <span className={`cyber-status-pill ${statusClass(selected.status)}`}>
                     <i className="status-dot" />
-                    {selected.status === 'MINING' ? 'EM CICLO' : selected.status === 'READY' ? 'PRONTA' : 'ENCERRADA'}
+                    {minerStatusLabel(selected.status)}
                   </span>
                 </header>
 
                 {/* 3D Holographic Stage with Three.js WebGL Particle Accelerator */}
                 {(() => {
-                  const isStarting = ignition.startingId === selected.id || pulseId === selected.id;
-                  const currentStep = ignition.startingId === selected.id ? ignition.step : pulseStep;
+                  const isStarting = ignition.startingId === selected.id;
+                  const currentStep = ignition.step;
                   return (
                     <>
                       <div
                         className={`quantum-hologram-stage ${
                           isStarting ? 'is-starting' : ''
-                        } ${selected.status === 'MINING' ? 'is-mining' : ''}`}
+                        } ${selected.status === 'MINING' ? 'is-mining' : ''} ${selected.status === 'PAUSED' ? 'is-paused' : ''}`}
                       >
                         {/* Three.js Quantum Particle Vortex & Ambient Reactor Field */}
-                        <QuantumReactorCanvas
+                        <Suspense fallback={null}><QuantumReactorCanvas
                           planId={selected.planId}
                           active={selected.status === 'MINING'}
                           starting={isStarting}
                           step={currentStep}
-                        />
+                        /></Suspense>
 
                         {/* Atmospheric Shockwave & Horizon Energy Sweeps */}
                         <div className="quantum-stage-energy-ray" aria-hidden="true" />
@@ -366,7 +336,11 @@ export default function MinersPage({ data, refresh, notify }: PortalProps) {
                               pathLength="100"
                               style={{
                                 strokeDasharray: `${ratio * 100} 100`,
-                                stroke: selected.status === 'MINING' ? minerAccent(selected.planId) : '#224666',
+                                stroke: selected.status === 'MINING'
+                                  ? minerAccent(selected.planId)
+                                  : selected.status === 'PAUSED'
+                                    ? '#7d94aa'
+                                    : '#224666',
                               }}
                             />
                           </svg>
@@ -379,43 +353,26 @@ export default function MinersPage({ data, refresh, notify }: PortalProps) {
                           starting={isStarting}
                         />
 
+                        {selected.status === 'PAUSED' && !isStarting && (
+                          <div className="quantum-paused-flag" role="status">
+                            <Pause size={12} />
+                            <span>MÁQUINA DESLIGADA · TEMPO CONGELADO EM {countdown(selected.cycleEndsAt, cycleClock(selected, now))}</span>
+                          </div>
+                        )}
+
                         <div className="quantum-cipher-tag">
                           <Radio size={11} style={{ color: 'var(--miner-accent)' }} />
                           <span>
                             {plan?.algorithm ?? 'Algoritmo a conectar'} · {selected.coin}
                           </span>
-                          {selected.status === 'MINING' && (
-                            <button
-                              type="button"
-                              className="pulse-preview-trigger"
-                              onClick={() => triggerPulse(selected.id)}
-                              title="Rever animação de ativação"
-                              style={{
-                                background: 'color-mix(in srgb, var(--miner-accent) 15%, transparent)',
-                                border: '1px solid color-mix(in srgb, var(--miner-accent) 40%, transparent)',
-                                borderRadius: '10px',
-                                color: 'var(--miner-accent)',
-                                fontSize: '8px',
-                                padding: '2px 7px',
-                                cursor: 'pointer',
-                                marginLeft: '6px',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '3px',
-                                fontWeight: 600,
-                              }}
-                            >
-                              <Zap size={9} /> REVER
-                            </button>
-                          )}
                         </div>
 
-                        {isStarting && <IgnitionStatus step={currentStep} replay={pulseId === selected.id} />}
+                        {isStarting && <IgnitionStatus step={currentStep} />}
                       </div>
 
                       {ignition.requestingId === selected.id && (
                         <div className="boot-message" role="status">
-                          <span className="loader-line" /> CONFIRMANDO ATIVAÇÃO...
+                          <span className="loader-line" /> {ignition.action === 'pause' ? 'CONFIRMANDO PAUSA...' : ignition.action === 'resume' ? 'RELIGANDO MÁQUINA...' : 'CONFIRMANDO ATIVAÇÃO...'}
                         </div>
                       )}
 
@@ -425,19 +382,23 @@ export default function MinersPage({ data, refresh, notify }: PortalProps) {
                           className={`quantum-reactor-trigger ${
                             selected.status === 'MINING'
                               ? 'state-mining'
-                              : selected.status === 'READY'
-                                ? 'state-ready'
-                                : 'state-expired'
+                              : selected.status === 'PAUSED'
+                                ? 'state-paused'
+                                : selected.status === 'READY'
+                                  ? 'state-ready'
+                                  : 'state-expired'
                           } ${isStarting ? 'state-starting' : ''}`}
-                          disabled={ignition.busy || pulseId === selected.id || !['READY', 'MINING'].includes(selected.status)}
+                          disabled={ignition.busy || !['READY', 'MINING', 'PAUSED'].includes(selected.status)}
                           onClick={() => {
                             if (selected.status === 'READY') {
                               ignition.activate(selected);
                             } else if (selected.status === 'MINING') {
-                              triggerPulse(selected.id);
+                              ignition.pause(selected);
+                            } else if (selected.status === 'PAUSED') {
+                              ignition.resume(selected);
                             }
                           }}
-                          aria-label={selected.status === 'READY' ? 'Ativar ciclo da máquina' : selected.status === 'MINING' ? 'Rever animação de ativação' : 'Contrato encerrado'}
+                          aria-label={selected.status === 'READY' ? 'Ativar ciclo da máquina' : selected.status === 'MINING' ? 'Pausar o ciclo e desligar a máquina' : selected.status === 'PAUSED' ? 'Religar a máquina e retomar o ciclo' : 'Contrato encerrado'}
                         >
                           <Power size={36} />
                           <span>
@@ -448,12 +409,19 @@ export default function MinersPage({ data, refresh, notify }: PortalProps) {
                                 : selected.status === 'READY'
                                   ? 'ATIVAR CICLO'
                                   : selected.status === 'MINING'
-                                    ? 'CICLO ATIVO'
-                                    : 'ENCERRADO'}
+                                    ? 'PAUSAR CICLO'
+                                    : selected.status === 'PAUSED'
+                                      ? 'RELIGAR MÁQUINA'
+                                      : 'ENCERRADO'}
                           </span>
                           {selected.status === 'MINING' && !isStarting && (
                             <small style={{ fontSize: '7.5px', color: '#688fa8', letterSpacing: '0.5px' }}>
-                              REVER ANIMAÇÃO
+                              DESLIGA A MÁQUINA
+                            </small>
+                          )}
+                          {selected.status === 'PAUSED' && !isStarting && (
+                            <small style={{ fontSize: '7.5px', color: '#688fa8', letterSpacing: '0.5px' }}>
+                              RETOMA O TEMPO CONGELADO
                             </small>
                           )}
                         </button>
@@ -483,11 +451,11 @@ export default function MinersPage({ data, refresh, notify }: PortalProps) {
 
                   <Gauge
                     value={selected.status === 'MINING' ? 100 : 0}
-                    color={selected.status === 'MINING' ? '#10b981' : '#52758d'}
+                    color={selected.status === 'MINING' ? '#10b981' : selected.status === 'PAUSED' ? '#7d94aa' : '#52758d'}
                   >
                     <Clock3 size={18} />
-                    <strong>{selected.status === 'MINING' ? countdown(selected.cycleEndsAt, now) : '24h'}</strong>
-                    <small>{selected.status === 'MINING' ? 'TEMPO RESTANTE' : 'DURAÇÃO DO CICLO'}</small>
+                    <strong>{selected.status === 'MINING' || selected.status === 'PAUSED' ? countdown(selected.cycleEndsAt, cycleClock(selected, now)) : '24h'}</strong>
+                    <small>{selected.status === 'MINING' ? 'TEMPO RESTANTE' : selected.status === 'PAUSED' ? 'CONGELADO NO RESTANTE' : 'DURAÇÃO DO CICLO'}</small>
                   </Gauge>
 
                   <Gauge value={selected.allocatedHashrate ? 100 : 0} color="#38bdf8">
@@ -551,6 +519,12 @@ export default function MinersPage({ data, refresh, notify }: PortalProps) {
                         <dt>Expiração Prevista</dt>
                         <dd>{date(selected.expiresAt)}</dd>
                       </div>
+                      {selected.pausedAt && (
+                        <div className="quantum-spec-item">
+                          <dt>Pausado em</dt>
+                          <dd>{date(selected.pausedAt)}</dd>
+                        </div>
+                      )}
                       <div className="quantum-spec-item">
                         <dt>Hashrate Físico</dt>
                         <dd>
@@ -576,8 +550,12 @@ export default function MinersPage({ data, refresh, notify }: PortalProps) {
                 <div className="quantum-hardware-note">
                   <Info size={15} />
                   <span>
-                    O botão ativa seu ciclo Cloud de 24h. Temperatura, consumo e estado físico dependem da integração
-                    ASIC.{selected.isDemo && ' Ambiente demonstrativo; os créditos são simulados.'}
+                    {selected.status === 'MINING'
+                      ? 'Pausar desliga a máquina e congela o tempo restante do ciclo. Nada é produzido enquanto ela estiver desligada.'
+                      : selected.status === 'PAUSED'
+                        ? `Máquina desligada. Ao religar, ela volta com o tempo que restava e a partida é exibida novamente. Retome antes de ${date(selected.expiresAt)}, quando o contrato encerra.`
+                        : 'O botão ativa seu ciclo Cloud de 24h. Temperatura, consumo e estado físico dependem da integração ASIC.'}
+                    {selected.isDemo && ' Ambiente demonstrativo; os créditos são simulados.'}
                   </span>
                 </div>
               </motion.div>
@@ -588,11 +566,12 @@ export default function MinersPage({ data, refresh, notify }: PortalProps) {
                 </div>
                 <div>
                   <p className="eyebrow" style={{ color: '#00e5ff', marginBottom: 6 }}>
-                    QUANTUM FLEET SELECTION
+                    CONTROLE DA FROTA
                   </p>
                   <h2>Selecione uma máquina.</h2>
                 </div>
-                <p>Selecione um nó ao lado para visualizar a telemetria, disparar o ciclo e acompanhar sua produção.</p>
+                <p>Abra uma máquina para ativar ou pausar seu ciclo, acompanhar o tempo restante e consultar o contrato.</p>
+                {data.miners[0] && <button className="button button-secondary" onClick={() => choose(data.miners.find(m => m.status === 'READY') ?? data.miners[0])}>Abrir {data.miners.find(m => m.status === 'READY')?.machine ?? data.miners[0].machine} <ArrowUpRight size={15} /></button>}
               </div>
             )}
           </AnimatePresence>

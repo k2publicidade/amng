@@ -1,5 +1,7 @@
 import type { Config } from '../server/config.ts';
-import { sqliteDatabase } from '../server/database.ts';
+import { randomUUID } from 'node:crypto';
+import pg from 'pg';
+import { postgresDatabase, sqliteDatabase } from '../server/database.ts';
 import type { Database, Executor, Row } from '../server/database.ts';
 import { migrate } from '../server/schema.ts';
 import { PLANS, seedCatalog } from '../server/catalog.ts';
@@ -7,7 +9,28 @@ import { DAY, iso, postLedger, uid } from '../server/domain.ts';
 import type { PlanSnapshot } from '../server/fixtures.ts';
 
 export const TEST_CONFIG:Config={production:false,port:0,host:'127.0.0.1',origin:'http://localhost:5173',sqlitePath:':memory:',demoEnabled:true,sessionSecret:'exclusive-test-session-key-0123456789abcdef',smtpPort:587,binanceEnabled:false,binanceApiUrl:'https://api.binance.com',binanceStreamUrl:'wss://stream.binance.com:9443'};
-export async function database():Promise<Database>{const db=sqliteDatabase(':memory:');await migrate(db);await db.transaction(tx=>seedCatalog(tx));return db;}
+/** Each PostgreSQL test owns a new schema in the disposable local test database. */
+async function postgresTestDatabase(connectionString:string):Promise<Database>{
+  const url=new URL(connectionString);
+  if(!['127.0.0.1','localhost','[::1]'].includes(url.hostname)||url.pathname!=='/amng_test')throw new Error('PostgreSQL tests require the disposable local amng_test database');
+  const schema=`amng_test_${randomUUID().replaceAll('-','')}`;
+  const owner=new pg.Pool({connectionString,max:1});
+  await owner.query(`CREATE SCHEMA "${schema}"`);
+  url.searchParams.set('options',`-c search_path=${schema}`);
+  const db=postgresDatabase(url.toString());
+  return {...db,async close(){
+    try{await db.close();}
+    finally{
+      try{await owner.query(`DROP SCHEMA "${schema}" CASCADE`);}
+      finally{await owner.end();}
+    }
+  }};
+}
+export async function database():Promise<Database>{
+  const db=process.env.AMNG_TEST_POSTGRES_URL?await postgresTestDatabase(process.env.AMNG_TEST_POSTGRES_URL):sqliteDatabase(':memory:');
+  try{await migrate(db);await db.transaction(tx=>seedCatalog(tx));return db;}
+  catch(error){await db.close();throw error;}
+}
 export async function demoUser(tx:Executor,scope?:string,sponsor?:Row,createdAt=Date.UTC(2025,11,1)):Promise<Row>{
   const id=uid('test_user');const demoScope=scope??id;
   await tx.run('INSERT INTO users(id,scope,name,email,password_hash,role,is_demo,referral_code,sponsor_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)',[id,demoScope,'Test Participant',`${id}@demo.invalid`,'disabled','MEMBER',1,`TEST-${id}`,sponsor?String(sponsor.id):null,iso(createdAt)]);

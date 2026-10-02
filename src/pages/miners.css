@@ -201,6 +201,7 @@
 .cyber-filter-matrix {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
   padding: 4px;
   background: rgba(5, 13, 22, 0.85);
@@ -210,7 +211,8 @@
 }
 
 .cyber-filter-tab {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -362,6 +364,12 @@
   background: rgba(245, 158, 11, 0.12);
   border: 1px solid rgba(245, 158, 11, 0.4);
   color: #f59e0b;
+}
+
+.cyber-status-pill.status-paused {
+  background: rgba(125, 148, 170, 0.14);
+  border: 1px solid rgba(125, 148, 170, 0.42);
+  color: #a9c0d3;
 }
 
 .cyber-status-pill.status-expired {
@@ -605,6 +613,50 @@
   animation: stageBootThrob 3.6s ease-in-out both;
 }
 
+/* Stage Paused: the machine is off; only the frozen progress stays visible. */
+.quantum-hologram-stage.is-paused > .visuals-miner {
+  filter: saturate(0.4) brightness(0.82);
+}
+
+.quantum-hologram-stage.is-paused .quantum-stage-floor {
+  opacity: 0.35;
+}
+
+.quantum-paused-flag {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  border: 1px solid rgba(125, 148, 170, 0.5);
+  border-radius: 20px;
+  background: rgba(12, 20, 28, 0.9);
+  backdrop-filter: blur(8px);
+  font-family: var(--mono);
+  font-size: 8.5px;
+  letter-spacing: 0.9px;
+  color: #b5cadb;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.quantum-paused-flag > svg {
+  color: #8fa8bd;
+}
+
+@media (max-width: 760px) {
+  .quantum-paused-flag {
+    font-size: 7.5px;
+    padding: 4px 9px;
+    max-width: calc(100% - 28px);
+    overflow: hidden;
+  }
+}
+
 @keyframes stageBootThrob {
   0% { filter: brightness(1); }
   20% { filter: brightness(1.15) contrast(1.05); }
@@ -813,7 +865,7 @@
   50% { box-shadow: 0 0 0 6px #071018, 0 0 0 8px rgba(245, 158, 11, 0.6), 0 0 40px rgba(245, 158, 11, 0.45); }
 }
 
-/* Active Mining State */
+/* Active Mining State: the reactor pauses the confirmed cycle. */
 .quantum-reactor-trigger.state-mining {
   border-color: var(--miner-accent, #1386ff);
   box-shadow:
@@ -821,7 +873,33 @@
     0 0 0 8px color-mix(in srgb, var(--miner-accent, #1386ff) 50%, transparent),
     0 0 36px color-mix(in srgb, var(--miner-accent, #1386ff) 40%, transparent),
     inset 0 2px 12px color-mix(in srgb, var(--miner-accent, #1386ff) 25%, transparent);
-  cursor: default;
+  cursor: pointer;
+}
+
+.quantum-reactor-trigger.state-mining:hover {
+  transform: scale(1.04);
+  box-shadow:
+    0 0 0 6px #071018,
+    0 0 0 8px rgba(255, 165, 0, 0.45),
+    0 0 40px rgba(255, 165, 0, 0.35),
+    inset 0 2px 12px rgba(255, 165, 0, 0.2);
+}
+
+/* Paused State: the machine is off and waits for a new ignition. */
+.quantum-reactor-trigger.state-paused {
+  border-color: #7d94aa;
+  cursor: pointer;
+  animation: reactorPauseBreath 3.4s ease-in-out infinite;
+}
+
+.quantum-reactor-trigger.state-paused:hover {
+  transform: scale(1.04);
+  border-color: #b3c8d8;
+}
+
+@keyframes reactorPauseBreath {
+  0%, 100% { box-shadow: 0 0 0 6px #071018, 0 0 0 8px rgba(125, 148, 170, 0.25), 0 0 22px rgba(125, 148, 170, 0.18); }
+  50% { box-shadow: 0 0 0 6px #071018, 0 0 0 8px rgba(125, 148, 170, 0.45), 0 0 30px rgba(125, 148, 170, 0.3); }
 }
 
 .quantum-reactor-trigger.state-starting {
@@ -1171,3 +1249,29 @@
 .cyber-miner-card.selected { border-color: var(--miner-accent); box-shadow: 0 0 0 1px var(--miner-accent), 0 8px 28px color-mix(in srgb, var(--miner-accent) 12%, transparent); }
 .quantum-reactor-trigger.state-mining:disabled { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .miners-cyber-page *, .miners-cyber-page *::before, .miners-cyber-page *::after { animation: none !important; transition: none !important; } .quantum-stage-energy-ray, .quantum-stage-shockwave-ring { display: none; } }
+
+/* Refine the cockpit into a readable equipment console. */
+.fleet-hud-title-wrap h1 { font-family: var(--display); font-size: 46px; font-weight: 500; }
+.fleet-hud-title-wrap > .eyebrow { font-family: var(--font); font-size: 13px; letter-spacing: 0; }
+.telemetry-label { font-size: 10px; letter-spacing: .6px; color: #a2b9ca; }
+.telemetry-value { font-variant-numeric: tabular-nums; }
+.cyber-card-rig-id { font-size: 10px; color: #96b6ca; }
+.cyber-status-pill { font-size: 9px; }
+.cyber-card-metric-col > span, .cyber-card-plan-meta { color: #9fb8ca; }
+.cyber-filter-tab { min-height: 44px; font-size: 12px; letter-spacing: 0; }
+.cyber-cta-btn { border-radius: 7px; box-shadow: 0 4px 18px #006ed122; }
+.quantum-placeholder-reticle { animation: none; }
+.quantum-placeholder-dock .button { white-space: normal; }
+.quantum-reactor-trigger.state-ready, .quantum-reactor-trigger.state-paused { animation: none; }
+.cyber-miner-card.selected { box-shadow: 0 0 0 1px color-mix(in srgb, var(--miner-accent) 40%, transparent), 0 12px 24px #0003; }
+@media (max-width: 760px) {
+  .fleet-hud-title-wrap h1 { font-size: 36px; }
+  .telemetry-label { font-size: 9px; }
+  .cyber-filter-matrix { gap: 2px; }
+  .cyber-filter-tab { padding-inline: 8px; font-size: 11px; }
+}
+.quantum-reactor-canvas-wrap { opacity: .55; }
+.quantum-hologram-stage.is-starting { animation: none; }
+.quantum-stage-energy-ray, .quantum-stage-shockwave-ring { display: none; }
+.quantum-paused-flag { font-size: 9px; white-space: normal; text-align: center; width: max-content; max-width: calc(100% - 30px); border-radius: 6px; }
+.quantum-reactor-trigger > small { color: #9fb6c6 !important; font-size: 9px !important; line-height: 1.4; }

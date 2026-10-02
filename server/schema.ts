@@ -2,6 +2,11 @@ import type { Database } from './database.ts';
 
 const schema = `
 CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS api_rate_limits (
+  rate_key TEXT PRIMARY KEY, bucket TEXT NOT NULL, hits INTEGER NOT NULL CHECK(hits >= 0), reset_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS api_rate_limits_expiry_idx ON api_rate_limits(reset_at);
+CREATE INDEX IF NOT EXISTS api_rate_limits_bucket_idx ON api_rate_limits(bucket);
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY, scope TEXT NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('MEMBER','ADMIN')),
@@ -44,6 +49,7 @@ CREATE INDEX IF NOT EXISTS contracts_user_idx ON contracts(user_id);
 CREATE TABLE IF NOT EXISTS mining_cycles (
   id TEXT PRIMARY KEY, contract_id TEXT NOT NULL REFERENCES contracts(id), cycle_number INTEGER NOT NULL,
   starts_at TEXT NOT NULL, ends_at TEXT NOT NULL, settled_at TEXT, earned_cents BIGINT NOT NULL DEFAULT 0,
+  paused_at TEXT,
   UNIQUE(contract_id,cycle_number)
 );
 CREATE TABLE IF NOT EXISTS accounting_journals (
@@ -162,6 +168,11 @@ export async function migrate(db: Database) {
     ? (await db.all('PRAGMA table_info(users)')).some(column=>column.name==='admin_role')
     : !!await db.get("SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='users' AND column_name='admin_role'");
   if(!adminRoleColumn)await db.script("ALTER TABLE users ADD COLUMN admin_role TEXT CHECK(admin_role IN ('MEMBER','ADMIN','SUPPORT','MINING_OPERATOR','FINANCE_OPERATOR','PRODUCT_MANAGER','FINANCE_APPROVER','MASTER_ADMIN','READ_ONLY'));");
+  // Additive migration: paused cycles keep pending cycles; existing settlement rows are untouched.
+  const cyclePauseColumn=db.dialect==='sqlite'
+    ? (await db.all('PRAGMA table_info(mining_cycles)')).some(column=>column.name==='paused_at')
+    : !!await db.get("SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='mining_cycles' AND column_name='paused_at'");
+  if(!cyclePauseColumn)await db.script('ALTER TABLE mining_cycles ADD COLUMN paused_at TEXT;');
   if (db.dialect === 'sqlite') {
     for (const table of ['ledger_entries', 'market_accruals', 'accounting_journals', 'accounting_lines', 'audit_events', 'payment_events', 'career_periods', 'affiliate_commissions', 'commission_reversals', 'career_funding', 'career_funding_reversals', 'career_closings', 'career_awards', 'contract_cancellations', 'profit_sharing_rates']) {
       await db.script(`CREATE TRIGGER IF NOT EXISTS ${table}_no_update BEFORE UPDATE ON ${table} BEGIN SELECT RAISE(ABORT,'append-only table'); END;
@@ -190,4 +201,6 @@ export async function migrate(db: Database) {
   await db.run('INSERT INTO schema_migrations(version,applied_at) VALUES(?,?) ON CONFLICT(version) DO NOTHING', [1, new Date().toISOString()]);
   await db.run('INSERT INTO schema_migrations(version,applied_at) VALUES(?,?) ON CONFLICT(version) DO NOTHING', [2, new Date().toISOString()]);
   await db.run('INSERT INTO schema_migrations(version,applied_at) VALUES(?,?) ON CONFLICT(version) DO NOTHING', [3, new Date().toISOString()]);
+  await db.run('INSERT INTO schema_migrations(version,applied_at) VALUES(?,?) ON CONFLICT(version) DO NOTHING', [4, new Date().toISOString()]);
+  await db.run('INSERT INTO schema_migrations(version,applied_at) VALUES(?,?) ON CONFLICT(version) DO NOTHING', [5, new Date().toISOString()]);
 }

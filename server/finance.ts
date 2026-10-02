@@ -44,7 +44,7 @@ export async function processDemo(tx:Executor,user:Row,now=Date.now()) {
   const contracts=await tx.all('SELECT * FROM contracts WHERE user_id=? AND status=?',[String(user.id),'ACTIVE']);
   for(const contract of contracts){
     const snapshot=JSON.parse(String(contract.snapshot)) as PlanSnapshot;
-    const cycles=await tx.all('SELECT * FROM mining_cycles WHERE contract_id=? AND settled_at IS NULL AND ends_at<=? ORDER BY cycle_number',[String(contract.id),iso(now)]);
+    const cycles=await tx.all('SELECT * FROM mining_cycles WHERE contract_id=? AND settled_at IS NULL AND paused_at IS NULL AND ends_at<=? ORDER BY cycle_number',[String(contract.id),iso(now)]);
     for(const cycle of cycles){
       const earning=applyBps(Number(contract.principal_cents),snapshot.plan.rateBps);
       if(earning)await postLedger(tx,{user,wallet:'earnings',amount:earning,key:`${contract.id}:mining:${cycle.cycle_number}`,kind:'MINING_INCOME',description:`${snapshot.plan.coin} · ciclo ${cycle.cycle_number} simulado`,reference:String(contract.id),createdAt:String(cycle.ends_at)});
@@ -85,12 +85,50 @@ export async function activate(tx:Executor,user:Row,id:string,now=Date.now()){
   if(contract.status!=='ACTIVE')reject(409,'CONTRACT_EXPIRED','Contrato indisponível para ativação.');
   await processDemo(tx,user,now);
   const latest=await tx.get('SELECT * FROM mining_cycles WHERE contract_id=? ORDER BY cycle_number DESC LIMIT 1',[id]);
+  if(latest&&!latest.settled_at&&latest.paused_at)reject(409,'CYCLE_PAUSED','Esta máquina está pausada. Religue a máquina para retomar o ciclo que já foi confirmado.');
   if(latest&&!latest.settled_at&&new Date(String(latest.ends_at)).getTime()>now)return String(latest.id);
   if(now+DAY>expiry)reject(409,'CONTRACT_EXPIRED','Contrato sem período completo elegível para uma nova ativação.');
   const cycle=uid('cycle');const number=Number(latest?.cycle_number??0)+1;
   await tx.run('INSERT INTO mining_cycles(id,contract_id,cycle_number,starts_at,ends_at) VALUES(?,?,?,?,?)',[cycle,id,number,iso(now),iso(now+DAY)]);
   await audit(tx,user,'MINING_CYCLE_ACTIVATED',id,{cycleId:cycle,cycleNumber:number,endsAt:iso(now+DAY),isDemo:true});
   return cycle;
+}
+
+async function ownedContract(tx:Executor,user:Row,id:string){
+  const contract=await tx.get('SELECT * FROM contracts WHERE id=? AND user_id=? AND scope=?',[id,String(user.id),String(user.scope)]);
+  if(!contract)reject(404,'MINER_NOT_FOUND','Máquina não encontrada.');
+  return contract;
+}
+
+/** Turns the machine off: the confirmed cycle keeps its remaining time and stops counting down. */
+export async function pauseCycle(tx:Executor,user:Row,id:string,now=Date.now()){
+  await tx.lockUser(String(user.id));
+  const contract=await ownedContract(tx,user,id);
+  if(contract.status!=='ACTIVE')reject(409,'CONTRACT_EXPIRED','Contrato indisponível para pausar a máquina.');
+  await processDemo(tx,user,now);
+  const latest=await tx.get('SELECT * FROM mining_cycles WHERE contract_id=? ORDER BY cycle_number DESC LIMIT 1',[id]);
+  if(!latest||latest.settled_at||new Date(String(latest.ends_at)).getTime()<=now)reject(409,'CYCLE_NOT_ACTIVE','Não há ciclo ativo para pausar.');
+  if(latest.paused_at)return String(latest.id);
+  await tx.run('UPDATE mining_cycles SET paused_at=? WHERE id=? AND paused_at IS NULL AND settled_at IS NULL',[iso(now),String(latest.id)]);
+  await audit(tx,user,'MINING_CYCLE_PAUSED',id,{cycleId:String(latest.id),pausedAt:iso(now),endsAt:String(latest.ends_at),isDemo:true});
+  return String(latest.id);
+}
+
+/** Turns the machine back on: the paused interval returns to the cycle, never to the contract window. */
+export async function resumeCycle(tx:Executor,user:Row,id:string,now=Date.now()){
+  await tx.lockUser(String(user.id));
+  await requireFinancialRule(tx,user,'mining-income');
+  const contract=await ownedContract(tx,user,id);
+  if(contract.status!=='ACTIVE')reject(409,'CONTRACT_EXPIRED','Contrato indisponível para religar a máquina.');
+  const latest=await tx.get('SELECT * FROM mining_cycles WHERE contract_id=? ORDER BY cycle_number DESC LIMIT 1',[id]);
+  if(!latest||latest.settled_at)reject(409,'CYCLE_NOT_PAUSED','Esta máquina não está pausada.');
+  if(!latest.paused_at)reject(409,'CYCLE_NOT_PAUSED','Esta máquina não está pausada.');
+  const frozen=Math.max(0,now-new Date(String(latest.paused_at)).getTime());
+  const endsAt=new Date(String(latest.ends_at)).getTime()+frozen;
+  if(endsAt>new Date(String(contract.expires_at)).getTime())reject(409,'CONTRACT_WINDOW_EXCEEDED','O tempo congelado não cabe no prazo restante do contrato. O ciclo não pode ser retomado.');
+  await tx.run('UPDATE mining_cycles SET paused_at=NULL,ends_at=? WHERE id=? AND paused_at IS NOT NULL AND settled_at IS NULL',[iso(endsAt),String(latest.id)]);
+  await audit(tx,user,'MINING_CYCLE_RESUMED',id,{cycleId:String(latest.id),frozenMs:frozen,endsAt:iso(endsAt),contractExpiresAt:String(contract.expires_at),isDemo:true});
+  return String(latest.id);
 }
 
 export async function deposit(tx:Executor,user:Row,input:{amountCents:number;idempotencyKey:string},now=Date.now()){

@@ -9,7 +9,6 @@ import type { PortalProps } from './lib/portal';
 import Brand from './components/Brand';
 import Preloader from './components/Preloader';
 import Dialog from './components/Dialog';
-import { DEFAULT_BOOTSTRAP } from './lib/defaultBootstrap';
 import LandingPage from './pages/LandingPage';
 import AuthPage from './pages/AuthPage';
 import DashboardPage from './pages/DashboardPage';
@@ -103,7 +102,7 @@ function Shell({ data, refresh, notify }: PortalProps) {
               {notifications && <motion.div className="notification-panel" initial={{ opacity: 0, y: 8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 6, scale: 0.98 }} transition={{ duration: 0.18, ease: 'easeOut' }}><h3>Sua operação</h3><p>{(data.miners ?? []).filter(m => m.status === 'READY').length} máquina(s) disponível(is) para um novo ciclo.</p><Link to="/app/miners" onClick={() => setNotifications(false)}>Ver máquinas <ArrowUpRight size={14} /></Link><p className="muted">As regras e integrações pendentes podem ser consultadas no ecossistema.</p></motion.div>}
             </AnimatePresence>
           </div>
-          <Link to="/app/wallets" className="button button-primary topbar-deposit"><ArrowDownToLine size={15} />Depositar</Link>
+          <Link to="/app/wallets?tab=deposit" className="button button-primary topbar-deposit"><ArrowDownToLine size={15} />Depositar</Link>
           <button className="icon-button logout-button" title="Sair da conta" aria-label="Sair da conta" onClick={logout}><LogOut size={17} /></button>
         </div>
       </header>
@@ -135,7 +134,6 @@ export default function App() {
       setBootError('');
     } catch (error) {
       if (revision !== bootstrapRevision.current) return;
-      setData(prev => prev ?? DEFAULT_BOOTSTRAP);
       setBootError((error as Error).message);
     }
   }, []);
@@ -146,7 +144,8 @@ export default function App() {
   const props = data ? { data, refresh, notify } : null;
   return <MotionConfig reducedMotion="user">
     {!preloaded && <Preloader ready={Boolean(data || bootError)} onComplete={() => setPreloaded(true)} />}
-    {bootError && !data && <main className="fatal-error"><Brand /><h1>A conexão precisa de um instante.</h1><p>Não foi possível acessar a plataforma. Confira se a API está em execução.</p><p className="muted">{bootError}</p><button className="button button-primary" onClick={() => refresh().catch(error => setBootError((error as Error).message))}>Tentar novamente</button></main>}
+    {bootError && !data && <main className="fatal-error" role="alert"><Brand /><h1>A conexão precisa de um instante.</h1><p>{bootError}</p><button className="button button-primary" onClick={() => refresh()}>Tentar novamente</button></main>}
+    {bootError && data && <div className="connection-notice" role="alert"><span><strong>Conexão com a plataforma interrompida.</strong> Os dados podem estar desatualizados. {bootError}</span><button className="button button-secondary" onClick={() => refresh()}>Tentar novamente</button></div>}
     {data && props && <Routes>
       <Route path="/" element={<LandingPage data={data} authenticated={authenticated} notify={notify} />} />
       <Route path="/login" element={<AuthPage mode="login" authenticated={authenticated} notify={notify} />} />

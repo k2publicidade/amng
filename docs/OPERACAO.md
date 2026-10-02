@@ -1,5 +1,7 @@
 # AMNG · compilação, implantação e recuperação
 
+> O destino de produção escolhido passou a ser a Vercel. A adaptação e o estado das dependências estão em `VERCEL.md`; os comandos Docker abaixo descrevem o pacote de auto-hospedagem e permanecem como alternativa técnica.
+
 ## Pacote de execução
 
 `npm run build` compila a interface em `dist/` e a API em `build/server/`. A compilação de servidor reescreve imports `.ts` para `.js`; `npm start` usa Node sem transpilar em produção. Desenvolvimento continua com `npm run dev`.
@@ -11,6 +13,16 @@ O `Dockerfile` usa duas etapas, dependências fixadas no lockfile e usuário de 
 As imagens escolhidas são as oficiais [Node](https://hub.docker.com/_/node) e [PostgreSQL](https://hub.docker.com/_/postgres). O volume usa o caminho da série PostgreSQL 17. Não trocar a versão principal de um volume existente sem migração planejada.
 
 ## Configuração
+
+### Validação local em PostgreSQL
+
+`npm run test:postgres` usa os executáveis PostgreSQL 17 já instalados. No Windows, o caminho padrão é `C:/Program Files/PostgreSQL/17/bin`; em outro ambiente, definir `AMNG_POSTGRES_BIN` com a pasta dos executáveis. O comando não instala software nem usa o serviço/banco existente.
+
+O runner inicializa um cluster em `.amng-runtime`, escuta somente em `127.0.0.1` com porta temporária e autenticação SCRAM, e cria o banco descartável `amng_test`. A senha é gerada durante a execução e não aparece em argumentos, logs ou interface. Cada teste usa um schema próprio, removido ao fechar suas conexões. Depois da suíte, `scripts/postgres-restore.ts` gera um dump, restaura em outro banco do mesmo cluster e compara o conteúdo das tabelas, equilíbrio dos journals e triggers imutáveis. Também verifica os gates da aplicação em modo produção contra esse banco temporário.
+
+Ao terminar, o runner para o próprio cluster e remove seus arquivos. Se a parada falhar, preserva os arquivos para diagnóstico. Interromper a árvore de processos pelo sistema pode impedir essa limpeza; antes de limpar um diretório remanescente, confirmar o caminho absoluto e que o cluster está parado.
+
+O resultado local não substitui o ensaio de recuperação no destino de produção, com seus usuários, privilégios, retenção, armazenamento e proxy HTTPS.
 
 Em um arquivo de ambiente exclusivo do destino, definir `POSTGRES_PASSWORD`, `DATABASE_URL`, `APP_ORIGIN` HTTPS e `SESSION_SECRET`. A URL deve usar o host `postgres`, banco `amng` e a senha codificada corretamente para uma URL. Definir SMTP e, na etapa final solicitada, os campos da 2PP.
 
@@ -52,4 +64,4 @@ O motor demonstrativo recupera ciclos que já foram abertos. Fechamento de carre
 
 ## Limites de lançamento
 
-A construção do pacote não conclui a integração 2PP, telemetria ASIC/pool, política de créditos/saques/cancelamentos ou homologação PostgreSQL. A matriz `COBERTURA_DO_ESCOPO.md` mantém esses itens separados dos módulos locais implementados. Ensaiar migração, restauração, rollback e reconciliação no ambiente do destino antes de ativar a operação real.
+A construção do pacote não conclui a integração 2PP, telemetria ASIC/pool, política de créditos/saques/cancelamentos ou homologação do destino de produção. A matriz `COBERTURA_DO_ESCOPO.md` mantém esses itens separados dos módulos locais implementados. Em 01/10/2026, migração e backup/restauração passaram no cluster local isolado, conforme `VERIFICACAO_2026-10-01.md`. Ensaiar migração, restauração, rollback e reconciliação no ambiente do destino antes de ativar a operação real.

@@ -14,9 +14,12 @@ export function readConfig():Config {
   const sqlitePath=process.env.SQLITE_PATH||'./data/amng.sqlite';
   let sessionSecret=process.env.SESSION_SECRET||'';
   if(!production&&(!sessionSecret||sessionSecret.startsWith('replace-with-'))){
+    if(sqlitePath===':memory:')sessionSecret=token();
+    else{
     const path=resolve(dirname(sqlitePath),'.session-secret');mkdirSync(dirname(path),{recursive:true});
     if(existsSync(path))sessionSecret=readFileSync(path,'utf8').trim();
     else{sessionSecret=token();writeFileSync(path,sessionSecret,{mode:0o600,flag:'wx'});}
+    }
   }
   if(sessionSecret.length<32||production&&sessionSecret.startsWith('replace-with-'))throw new Error('SESSION_SECRET must be an exclusive secret containing at least 32 characters');
   if(production&&!process.env.DATABASE_URL)throw new Error('Production requires PostgreSQL DATABASE_URL; SQLite is development only');

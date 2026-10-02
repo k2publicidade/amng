@@ -16,8 +16,9 @@ import { audit, DomainError, idempotent, iso, reject, uid } from './domain.ts';
 import { constantEqual, encryptSecret, hashPassword, newMfa, sha256, token, verifyMfa, verifyPassword } from './security.ts';
 import { createDemo } from './fixtures.ts';
 import { adminOverview, bootstrap, minerStatement } from './queries.ts';
-import { activate, closeMarket, convert, deposit, openMarket, processDemo, purchase, reconcilePayment, withdrawal } from './finance.ts';
+import { activate, closeMarket, convert, deposit, openMarket, pauseCycle, processDemo, purchase, reconcilePayment, resumeCycle, withdrawal } from './finance.ts';
 import { BinanceQuotes } from './quotes.ts';
+import { DatabaseRateLimitStore } from './rate-limit-store.ts';
 import { TwoPPProvider } from './providers/two-pp.ts';
 import { closeDemoCareer } from './career.ts';
 import { careerPreview } from './career-preview.ts';
@@ -32,7 +33,7 @@ const amountSchema=z.number().int().min(1).max(100_000_000);
 const keySchema=z.string().min(8).max(120).regex(/^[A-Za-z0-9_.:-]+$/);
 const totpSchema=z.string().regex(/^\d{6}$/).optional();
 interface AuthRequest extends Request { amngSession?:Row;amngUser?:Row; }
-interface AppOptions { db?:Database;quotes?:BinanceQuotes;sendReset?:(email:string,url:string)=>Promise<void>; }
+interface AppOptions { db?:Database;quotes?:BinanceQuotes;sendReset?:(email:string,url:string)=>Promise<void>;serverless?:boolean; }
 export interface AppRuntime { app:express.Express;db:Database;close:()=>Promise<void>; }
 const currentUser=(request:Request)=>{
   const user=(request as AuthRequest).amngUser;
@@ -62,27 +63,30 @@ function route(handler:(request:Request,response:Response)=>Promise<unknown>){
 export async function createApplication(config:Config,options:AppOptions={}):Promise<AppRuntime> {
   const db=options.db??(config.databaseUrl?postgresDatabase(config.databaseUrl):sqliteDatabase(config.sqlitePath));
   if(config.production&&db.dialect!=='postgres')throw new Error('SQLite cannot be used in production');
-  await migrate(db);await db.transaction(tx=>seedCatalog(tx));
-  if(config.adminEmail||config.adminPassword){
-    if(!config.adminEmail||!config.adminPassword||config.adminPassword.length<12)throw new Error('Both ADMIN_EMAIL and strong ADMIN_PASSWORD are required');
-    const email=config.adminEmail.toLowerCase().trim();
-    const existing=await db.get('SELECT id FROM users WHERE email=?',[email]);
-    if(!existing){
-      const hashed=await hashPassword(config.adminPassword);const id=uid('admin');
-      await db.transaction(async tx=>{
-        await tx.run('INSERT INTO users(id,scope,name,email,password_hash,role,is_demo,referral_code,created_at) VALUES(?,?,?,?,?,?,?,?,?)',[id,'real','AMNG Operations',email,hashed,'ADMIN',0,`AMNG-${id.slice(-8).toUpperCase()}`,iso()]);
-        await audit(tx,null,'ADMIN_BOOTSTRAPPED',id,{source:'environment',mfaRequired:true});
-      });
+  await db.withInitializationLock(async()=>{
+    await migrate(db);await db.transaction(tx=>seedCatalog(tx));
+    if(config.adminEmail||config.adminPassword){
+      if(!config.adminEmail||!config.adminPassword||config.adminPassword.length<12)throw new Error('Both ADMIN_EMAIL and strong ADMIN_PASSWORD are required');
+      const email=config.adminEmail.toLowerCase().trim();
+      const existing=await db.get('SELECT id FROM users WHERE email=?',[email]);
+      if(!existing){
+        const hashed=await hashPassword(config.adminPassword);const id=uid('admin');
+        await db.transaction(async tx=>{
+          await tx.run('INSERT INTO users(id,scope,name,email,password_hash,role,is_demo,referral_code,created_at) VALUES(?,?,?,?,?,?,?,?,?)',[id,'real','AMNG Operations',email,hashed,'ADMIN',0,`AMNG-${id.slice(-8).toUpperCase()}`,iso()]);
+          await audit(tx,null,'ADMIN_BOOTSTRAPPED',id,{source:'environment',mfaRequired:true});
+        });
+      }
     }
-  }
+  });
   const quotes=options.quotes??new BinanceQuotes(config.binanceEnabled,config.binanceApiUrl,config.binanceStreamUrl);
   const provider=new TwoPPProvider({apiUrl:config.twoPpApiUrl,apiKey:config.twoPpApiKey,webhookSecret:config.twoPpWebhookSecret});
-  quotes.start();
+  if(!options.serverless)quotes.start();
   const app=express();app.disable('x-powered-by');
-  if(config.production&&process.env.TRUST_PROXY==='1')app.set('trust proxy',1);
+  if(config.production&&(options.serverless||process.env.TRUST_PROXY==='1'))app.set('trust proxy',1);
   app.use(helmet({contentSecurityPolicy:config.production?undefined:false}));
   app.use(cookieParser());
-  app.use('/api',rateLimit({windowMs:15*60*1000,limit:600,standardHeaders:'draft-8',legacyHeaders:false,message:{error:'Muitas solicitações. Tente novamente em alguns minutos.',code:'RATE_LIMITED'}}));
+  const limiterStore=(bucket:string)=>options.serverless?new DatabaseRateLimitStore(db,bucket,config.sessionSecret):undefined;
+  app.use('/api',rateLimit({windowMs:15*60*1000,limit:600,standardHeaders:'draft-8',legacyHeaders:false,store:limiterStore('api'),message:{error:'Muitas solicitações. Tente novamente em alguns minutos.',code:'RATE_LIMITED'}}));
   // The API contract and signature scheme remain unknown. No webhook is accepted or credited.
   app.post('/api/payments/2pp/webhook',express.raw({type:'application/json',limit:'64kb'}),(_req,res)=>res.status(503).json({error:'O contrato da API 2PP e a validação de assinatura aguardam configuração e homologação.',code:'PROVIDER_CONTRACT_PENDING'}));
   app.use(express.json({limit:'64kb'}));
@@ -112,9 +116,9 @@ export async function createApplication(config:Config,options:AppOptions={}):Pro
       next();
     }catch(error){next(error);}
   });
-  const authLimit=rateLimit({windowMs:15*60*1000,limit:30,standardHeaders:'draft-8',legacyHeaders:false,message:{error:'Limite de tentativas atingido. Tente novamente mais tarde.',code:'AUTH_RATE_LIMITED'}});
+  const authLimit=rateLimit({windowMs:15*60*1000,limit:30,standardHeaders:'draft-8',legacyHeaders:false,store:limiterStore('auth'),message:{error:'Limite de tentativas atingido. Tente novamente mais tarde.',code:'AUTH_RATE_LIMITED'}});
   app.use(['/api/auth/login','/api/auth/register','/api/auth/reset-request','/api/auth/reset-confirm','/api/auth/demo'],authLimit);
-  app.use(['/api/orders','/api/wallets','/api/market/positions'],rateLimit({windowMs:60_000,limit:60,standardHeaders:'draft-8',legacyHeaders:false,message:{error:'Aguarde antes de repetir a operação.',code:'COMMAND_RATE_LIMITED'}}));
+  app.use(['/api/orders','/api/wallets','/api/market/positions'],rateLimit({windowMs:60_000,limit:60,standardHeaders:'draft-8',legacyHeaders:false,store:limiterStore('commands'),message:{error:'Aguarde antes de repetir a operação.',code:'COMMAND_RATE_LIMITED'}}));
 
   async function establish(req:Request,res:Response,user:Row|null){
     const bearer=token();const csrfToken=token();const lifetime=user?24*60*60*1000:30*60*1000;
@@ -151,8 +155,12 @@ export async function createApplication(config:Config,options:AppOptions={}):Pro
 
   app.get('/api/health',route(async(_req,res)=>{await db.get('SELECT 1 AS healthy');res.json({status:'ok'});}));
   app.get('/api/bootstrap',route(async(req,res)=>{if(!(req as AuthRequest).amngSession)await establish(req,res,null);await replyBootstrap(req,res);}));
-  app.get('/api/market/quotes',(_req,res)=>{res.setHeader('Cache-Control','no-store');res.json(quotes.snapshot());});
-  app.get('/api/market/stream',(req,res)=>{
+  app.get('/api/market/quotes',route(async(_req,res)=>{
+    if(options.serverless)await quotes.refresh();
+    res.setHeader('Cache-Control',options.serverless?'public, s-maxage=15, stale-while-revalidate=30':'no-store');
+    res.json(quotes.snapshot());
+  }));
+  if(!options.serverless)app.get('/api/market/stream',(req,res)=>{
     res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-cache, no-transform','Connection':'keep-alive','X-Accel-Buffering':'no'});
     const send=(value:unknown)=>{res.write(`event: quotes\ndata: ${JSON.stringify(value)}\n\n`);};send(quotes.snapshot());
     quotes.on('update',send);const heartbeat=setInterval(()=>{res.write(': keepalive\n\n');send(quotes.snapshot());},15_000);heartbeat.unref();
@@ -260,6 +268,25 @@ export async function createApplication(config:Config,options:AppOptions={}):Pro
     if(!receipt||new Date(String(receipt.ends_at)).getTime()<=Date.now())reject(409,'CYCLE_RECEIPT_EXPIRED','Esta ativação pertence a um ciclo já encerrado. Atualize a máquina antes de iniciar outro ciclo.');
     await replyBootstrap(req,res);
   }));
+  app.post('/api/miners/:id/pause',route(async(req,res)=>{
+    const user=currentUser(req);
+    const input=body(z.object({idempotencyKey:keySchema}).strict(),req);
+    const contractId=String(req.params.id);
+    await db.transaction(tx=>idempotent(tx,user,'cycle-pause',input.idempotencyKey,{contractId},()=>pauseCycle(tx,user,contractId)));
+    const receipt=await db.get('SELECT paused_at,settled_at FROM mining_cycles WHERE contract_id=? ORDER BY cycle_number DESC LIMIT 1',[contractId]);
+    if(!receipt||!receipt.paused_at||receipt.settled_at)reject(409,'CYCLE_RECEIPT_EXPIRED','Esta pausa não corresponde ao ciclo vigente. Atualize a máquina antes de continuar.');
+    await replyBootstrap(req,res);
+  }));
+  app.post('/api/miners/:id/resume',route(async(req,res)=>{
+    const user=currentUser(req);
+    const input=body(z.object({idempotencyKey:keySchema}).strict(),req);
+    const contractId=String(req.params.id);
+    const cycleId=await db.transaction(tx=>idempotent(tx,user,'cycle-resume',input.idempotencyKey,{contractId},()=>resumeCycle(tx,user,contractId)));
+    // The receipt must prove a running cycle; a stale one never triggers the ignition sequence.
+    const receipt=await db.get('SELECT ends_at,paused_at,settled_at FROM mining_cycles WHERE id=?',[cycleId]);
+    if(!receipt||receipt.paused_at||receipt.settled_at||new Date(String(receipt.ends_at)).getTime()<=Date.now())reject(409,'CYCLE_RECEIPT_EXPIRED','Esta retomada pertence a um ciclo já encerrado. Atualize a máquina antes de religar.');
+    await replyBootstrap(req,res);
+  }));
   app.get('/api/miners/:id/statement',route(async(req,res)=>{
     const user=currentUser(req);
     const input=z.object({days:z.coerce.number().int().min(1).max(30).default(30),page:z.coerce.number().int().min(1).max(100000).default(1)}).strict().parse(req.query);
@@ -307,8 +334,8 @@ export async function createApplication(config:Config,options:AppOptions={}):Pro
     await db.transaction(async tx=>{const user=await sensitive(tx,req,input.totp);await reconcilePayment(tx,user,String(req.params.id),input);});res.json(await adminOverview(db,administrativeUser(req)));
   }));
   app.post('/api/admin/process',route(async(req,res)=>{
-    const input=body(z.object({totp:totpSchema}).strict(),req);let result={miningCycles:0,profitSharingDays:0,marketDays:0,payments:0};
-    await db.transaction(async tx=>{const user=await sensitive(tx,req,input.totp);if(!Number(user.is_demo))reject(409,'PROCESSING_DISABLED','Processamento financeiro real aguarda políticas e integrações homologadas.');for(const member of await tx.all('SELECT * FROM users WHERE scope=? AND blocked=0',[String(user.scope)])){const summary=await processDemo(tx,member);for(const key of Object.keys(result) as (keyof typeof result)[])result[key]+=summary[key];}await audit(tx,user,'DEMO_PERIODS_PROCESSED',String(user.scope),{...result,isDemo:true});});res.json({result,admin:await adminOverview(db,administrativeUser(req))});
+    const input=body(z.object({totp:totpSchema}).strict(),req);
+    const result=await db.transaction(async tx=>{const result={miningCycles:0,profitSharingDays:0,marketDays:0,payments:0};const user=await sensitive(tx,req,input.totp);if(!Number(user.is_demo))reject(409,'PROCESSING_DISABLED','Processamento financeiro real aguarda políticas e integrações homologadas.');for(const member of await tx.all('SELECT * FROM users WHERE scope=? AND blocked=0',[String(user.scope)])){const summary=await processDemo(tx,member);for(const key of Object.keys(result) as (keyof typeof result)[])result[key]+=summary[key];}await audit(tx,user,'DEMO_PERIODS_PROCESSED',String(user.scope),{...result,isDemo:true});return result;});res.json({result,admin:await adminOverview(db,administrativeUser(req))});
   }));
   app.get('/api/admin/career/preview',route(async(req,res)=>{
     const actor=administrativeUser(req);
@@ -317,8 +344,7 @@ export async function createApplication(config:Config,options:AppOptions={}):Pro
   }));
   app.post('/api/admin/career/close',route(async(req,res)=>{
     const input=body(z.object({month:z.string().regex(/^\d{4}-\d{2}$/),totp:totpSchema,idempotencyKey:keySchema}).strict(),req);
-    let result:Awaited<ReturnType<typeof closeDemoCareer>>|undefined;
-    await db.transaction(async tx=>{const user=await sensitive(tx,req,input.totp);await idempotent(tx,user,'career-close',input.idempotencyKey,{month:input.month},async()=>{result=await closeDemoCareer(tx,user,input.month);return result.id;});if(!result){const stored=await tx.get('SELECT id,snapshot FROM career_closings WHERE scope=? AND month=?',[String(user.scope),input.month]);result={id:String(stored!.id),...JSON.parse(String(stored!.snapshot)) as {users:number;salaryPaidCents:number;bonusPaidCents:number;awaitingFunding:number}};}});
+    const result=await db.transaction(async tx=>{let result:Awaited<ReturnType<typeof closeDemoCareer>>|undefined;const user=await sensitive(tx,req,input.totp);await idempotent(tx,user,'career-close',input.idempotencyKey,{month:input.month},async()=>{result=await closeDemoCareer(tx,user,input.month);return result.id;});if(!result){const stored=await tx.get('SELECT id,snapshot FROM career_closings WHERE scope=? AND month=?',[String(user.scope),input.month]);result={id:String(stored!.id),...JSON.parse(String(stored!.snapshot)) as {users:number;salaryPaidCents:number;bonusPaidCents:number;awaitingFunding:number}};}return result;});
     res.json({result:{...result,month:input.month},admin:await adminOverview(db,administrativeUser(req))});
   }));
 

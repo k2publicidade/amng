@@ -6,7 +6,7 @@ import type { PortalProps } from '../lib/portal';
 import { minerAccent } from '../../shared/miner-theme';
 import { useMinerActivation } from '../lib/useMinerActivation';
 import { money, number, shortDate } from '../lib/format';
-import { countdown, elapsedRatio, useMiningClock } from '../lib/mining';
+import { countdown, cycleClock, elapsedRatio, minerStatusLabel, useMiningClock } from '../lib/mining';
 import { pageVariants, staggerContainer, fadeUp, scaleIn } from '../lib/animations';
 import MinerVisual from '../components/MinerVisual';
 import Gauge from '../components/Gauge';
@@ -23,6 +23,8 @@ export default function DashboardPage({ data, refresh, notify }: PortalProps) {
   const now = useMiningClock();
   const miner = data.miners.find(m => m.id === selected) ?? data.miners[0];
   const active = data.miners.filter(m => m.status === 'MINING').length;
+  const ready = data.miners.filter(m => m.status === 'READY').length;
+  const paused = data.miners.filter(m => m.status === 'PAUSED').length;
   const total = data.wallets.reduce((s, w) => s + w.balanceCents, 0);
   const points = data.dashboard.productionHistory.slice(-period);
 
@@ -43,6 +45,11 @@ export default function DashboardPage({ data, refresh, notify }: PortalProps) {
           Expandir operação <ArrowUpRight size={16} />
         </Link>
       </motion.div>
+
+      <motion.section className="operation-brief" variants={fadeUp} aria-label="Resumo e próxima ação da operação">
+        <div className="operation-brief-title"><Cpu size={20} /><div><span className="eyebrow">CONTROLE DA OPERAÇÃO</span><strong>{active} {active === 1 ? 'máquina em ciclo' : 'máquinas em ciclo'}<span> / {data.miners.length} contratadas</span></strong></div></div>
+        <div className="operation-brief-next"><p>{ready ? `${ready} ${ready === 1 ? 'máquina pronta para ativar' : 'máquinas prontas para ativar'}.` : paused ? `${paused} ${paused === 1 ? 'ciclo pausado' : 'ciclos pausados'}. Retome quando estiver pronto.` : data.miners.length ? 'Acompanhe seus ciclos e os créditos registrados.' : 'Conheça os modelos e escolha seu primeiro plano.'}</p><Link to={data.miners.length ? '/app/miners' : '/app/plans'}>{ready ? 'Ativar máquinas' : paused ? 'Retomar ciclos' : data.miners.length ? 'Gerenciar frota' : 'Explorar planos'} <ArrowRight size={15} /></Link></div>
+      </motion.section>
 
       <motion.section className="mobile-overview panel" aria-label="Saldo total" variants={fadeUp}>
         <div className="balance-title">SALDO TOTAL <Wallet size={13} /></div>
@@ -73,7 +80,7 @@ export default function DashboardPage({ data, refresh, notify }: PortalProps) {
             <strong>{money(wallet.balanceCents)}</strong>
             <p>
               {wallet.reservedCents > 0
-                ? money(wallet.reservedCents) + ' reservado'
+                ? money(wallet.availableCents) + ' disponível · ' + money(wallet.reservedCents) + ' reservado'
                 : i === 0
                   ? 'Disponível para sua operação'
                   : i === 1
@@ -103,7 +110,7 @@ export default function DashboardPage({ data, refresh, notify }: PortalProps) {
                 </div>
                 <Link aria-label="Abrir detalhes da máquina" to={'/app/miners?miner=' + miner.id}><ArrowUpRight size={20} /></Link>
               </div>
-              <div className={'operation-stage ' + (miner.status === 'MINING' ? 'is-mining' : '') + (ignition.startingId === miner.id ? ' is-starting' : '')}>
+              <div className={'operation-stage ' + (miner.status === 'MINING' ? 'is-mining' : '') + (miner.status === 'PAUSED' ? 'is-paused' : '') + (ignition.startingId === miner.id ? ' is-starting' : '')}>
                 <div className="machine-halo" aria-hidden="true">
                   <svg viewBox="0 0 350 350">
                     <circle cx="175" cy="175" r="145" />
@@ -112,14 +119,20 @@ export default function DashboardPage({ data, refresh, notify }: PortalProps) {
                 </div>
                 <MinerVisual planId={miner.planId} active={miner.status === 'MINING'} starting={ignition.startingId === miner.id} variant="hero" />
                 <span className="machine-stage-label">
-                  {ignition.startingId === miner.id ? 'INICIALIZANDO' : miner.status === 'MINING' ? 'CICLO ATIVO' : 'AGUARDANDO ATIVAÇÃO'}
+                  {ignition.startingId === miner.id
+                    ? 'INICIALIZANDO'
+                    : miner.status === 'MINING'
+                      ? 'CICLO ATIVO'
+                      : miner.status === 'PAUSED'
+                        ? 'PAUSADA · MÁQUINA DESLIGADA'
+                        : 'AGUARDANDO ATIVAÇÃO'}
                   <span className="status-dot" />
                 </span>
                 {ignition.startingId === miner.id && <IgnitionStatus step={ignition.step} />}
               </div>
               <div className="operation-stat-strip">
                 <div><small>Produção prevista / ciclo</small><strong>{money(miner.cycleEstimatedCents)}</strong></div>
-                <div><small>Próximo crédito</small><strong className="mono">{countdown(miner.cycleEndsAt, now)}</strong></div>
+                <div><small>{miner.status === 'PAUSED' ? 'Tempo congelado' : 'Próximo crédito'}</small><strong className="mono">{countdown(miner.cycleEndsAt, cycleClock(miner, now))}</strong></div>
                 <div><small>Produção registrada</small><strong>{money(miner.totalEarnedCents)}</strong></div>
               </div>
               <div className="operation-footer">
@@ -139,22 +152,28 @@ export default function DashboardPage({ data, refresh, notify }: PortalProps) {
                 </div>
                 <button
                   className={'button ' + (miner.status === 'MINING' ? 'button-active' : 'button-primary')}
-                  disabled={ignition.busy || miner.status !== 'READY'}
-                  onClick={() => ignition.activate(miner)}
+                  disabled={ignition.busy || !['READY', 'MINING', 'PAUSED'].includes(miner.status)}
+                  onClick={() => {
+                    if (miner.status === 'READY') ignition.activate(miner);
+                    else if (miner.status === 'MINING') ignition.pause(miner);
+                    else if (miner.status === 'PAUSED') ignition.resume(miner);
+                  }}
                 >
                   <Power size={16} />
                   {ignition.requestingId === miner.id
-                    ? 'Confirmando...'
+                    ? ignition.action === 'pause' ? 'Pausando...' : ignition.action === 'resume' ? 'Religando...' : 'Confirmando...'
                     : ignition.startingId === miner.id
                       ? 'Inicializando...'
                       : miner.status === 'MINING'
-                        ? 'Ciclo em andamento'
-                        : miner.status === 'READY'
-                          ? 'Ativar mineração'
-                          : 'Contrato encerrado'}
+                        ? 'Pausar ciclo'
+                        : miner.status === 'PAUSED'
+                          ? 'Religar máquina'
+                          : miner.status === 'READY'
+                            ? 'Ativar mineração'
+                            : 'Contrato encerrado'}
                 </button>
               </div>
-              <p className="operation-note">{data.mode === 'demo' ? 'Ciclo demonstrativo de 24h. ' : ''}A imagem representa o modelo do plano. Telemetria física ainda não conectada.</p>
+              <p className="operation-note">{data.mode === 'demo' ? 'Ciclo demonstrativo de 24h. ' : ''}{miner.status === 'PAUSED' ? 'Máquina desligada: o tempo restante do ciclo fica congelado até religar. ' : ''}A imagem representa o modelo do plano. Telemetria física ainda não conectada.</p>
             </>
           ) : (
             <div className="operation-empty">
@@ -210,8 +229,8 @@ export default function DashboardPage({ data, refresh, notify }: PortalProps) {
                 <small>{m.allocatedHashrate === null ? 'Hashrate a conectar' : number(m.allocatedHashrate, 2) + ' ' + m.hashrateUnit}</small>
               </div>
               <div className="mobile-fleet-status">
-                <span className={'badge ' + (m.status === 'MINING' ? 'badge-green' : '')}>
-                  <i className="status-dot" />{m.status === 'MINING' ? 'EM CICLO' : 'PRONTA'}
+                <span className={'badge ' + (m.status === 'MINING' ? 'badge-green' : m.status === 'PAUSED' ? 'badge-warning' : '')}>
+                  <i className="status-dot" />{minerStatusLabel(m.status)}
                 </span>
                 <strong>{money(m.totalEarnedCents)}</strong>
                 <small>Registrado</small>
@@ -289,4 +308,3 @@ export default function DashboardPage({ data, refresh, notify }: PortalProps) {
     </motion.div>
   );
 }
-
